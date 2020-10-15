@@ -10,7 +10,7 @@ try:
 except Exception:
     print("[Maxwell Construction] Plotter is not available.")
     plotter_available = False
-    
+
 from scipy.signal import argrelextrema
 from scipy.integrate import quad
 
@@ -21,11 +21,11 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 class Maxwell:
     def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
         self.internal_name = "[Maxwell Construction]"
-        print(self.internal_name, "v.0.2.1 [121]")
+        print(self.internal_name, "v.0.2.2 [123]")
         self.filename  = filename
         self.tolerance = tolerance
         self.verbose   = verbose
-        
+
         if region_of_interest != "all": self.region_of_interest = [float(x) for x in region_of_interest.split(":")]
         else: self.region_of_interest = "all"
 
@@ -35,6 +35,9 @@ class Maxwell:
 
         self.plot = True
         self.can_calculate = True
+        # -1 hack
+        # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
+        self.internal_error = 0
 
         self.xdata4fit = None
         self.ydata4fit = None
@@ -85,6 +88,9 @@ class Maxwell:
             if plotter_available: self.plotter.plot(x=self.xydata4fit[:,0], y=self.xydata4fit[:,1], key_name_f="data_interest")
             self.plottedData=True
 
+    def internal_error_notification(self):
+            print("Internal error: ", self.internal_error)
+
     def check_xy(self, x,y):
         if self.verbose: print(self.internal_name, "checking data...")
         if self.verbose: print(" [Checking on] --> nan...")
@@ -105,7 +111,7 @@ class Maxwell:
                 try: self.x, self.y = np.loadtxt(self.filename, unpack=True, usecols=(0,1)); loaded = True
                 except Exception as e: print("Trouble:", e); loaded = False
                 if not loaded:
-                    # very strange format: <val>\t<val2>\n
+                    # used format: <val>\t<val2>\n
                     self.a = _ = []
                     with open(self.filename) as infile:
                         self.lines = lines = infile.read().splitlines()
@@ -143,11 +149,15 @@ class Maxwell:
             print(self.internal_name + "For this data is impossible to create Maxwell construction...")
             self.can_calculate = False
             self.Maxwell_can_be_extended = False
+            self.internal_error = 1
+            print("No extrems1/2")
 
         if abs(extrem1 - extrem2) < tol_difference:
             print(self.internal_name + "For this data is impossible to create Maxwell construction...")
             self.can_calculate = False
             self.Maxwell_can_be_extended = False
+            self.internal_error = -1
+            print("Difference between extrems less than ", tol_difference, " [could be varied]")
 
         if self.can_calculate:
             _, _, V1, V2 = self.extremus()  # getting extremus for splitting region
@@ -166,9 +176,12 @@ class Maxwell:
                 self.Maxwell_p_right_extremum = right_extremum_pressure
                 self.Maxwell_can_be_extended = True
                 print(f"Left corresponding volume {self.Maxwell_V1}, | pressure {self.Maxwell_p1}, right extremum: {right_extremum_pressure}")
+                self.internal_error = 3
 
         if self.can_calculate: self.calculate_areas()
-        if not self.can_calculate: self.Maxwell_p = np.nan
+        if not self.can_calculate:
+            self.Maxwell_p = np.nan
+            if self.internal_error: self.internal_error_notification()
 
     def fit(self, part="[A]", V1=0, V2=0):
         def get_x12(part, xydata, V1=0, V2=0):
@@ -183,7 +196,7 @@ class Maxwell:
 
         # add more points to fit
         x1, x2 = get_x12(part=part, xydata=self.xydata4fit, V1=V1, V2=V2)  #
-    
+
         newVs = np.linspace(start=x1, stop=x2, num=self.number_of_points)  # new volumes
         pressure_data = self.pressure_fit(newVs)                           # corresponding pressure
 
@@ -230,8 +243,8 @@ class Maxwell:
         if possible:
             Vl, Vc, Vr = self.get_correspoding_volumes(p_try, V1, V2)
             print(f"Vl: {Vl}, Vc: {Vc}, Vr: {Vr}")
-            
-            if Vl < Vc < Vr:
+
+            if Vl < Vc < Vr and self.can_calculate:
                 ok = True
                 # Take all
                 self.fit(part="[A]")
@@ -240,16 +253,21 @@ class Maxwell:
 
                 priv_area_difference = 100500
                 current_difference = abs(left_part - right_part)
-                while current_difference > self.tolerance:
+                while current_difference > self.tolerance and self.can_calculate:
                     if not self.verbose and _time%10==0 : print("Working " + next(spinner), end='\r')
-                    
-                    Vl, Vc, Vr = self.get_correspoding_volumes(p_try, V1, V2)
+
+                    try:
+                        Vl, Vc, Vr = self.get_correspoding_volumes(p_try, V1, V2)
+                    except:
+                        self.internal_error = 2
+                        self.Maxwell_can_be_extended = True
+                        break
                     left_part  = p_try * (Vc - Vl) - self.integrate(Vl, Vc)
                     right_part = self.integrate(Vc, Vr) - p_try * (Vr - Vc)
 
                     current_difference = abs(left_part - right_part)
-                    if priv_area_difference < current_difference: print("Previous difference was lower than current one... breaking..."); break
-                    if p_try[0] < 1: print("Pressure is less than 1 bar... breaking..."); break
+                    if priv_area_difference < current_difference: print("Previous difference was lower than current one... Breaking..."); break
+#                    if p_try[0] < 1: print("Pressure is less than 1 bar... breaking..."); break
 
                     p_old = p_try[0]
                     if self.verbose: print(self.internal_name, "area difference:", current_difference, "| p:", p_try)
@@ -267,18 +285,20 @@ class Maxwell:
                         y = [p_try[0] for i in range(len(x))]
                         if plotter_available: self.plotter.plot(x=x ,y=y , key_name_f="pressure" + str('{:.3f}'.format(p_try[0])), animation=True)
                     _time += 1
-                
+
             else:
-                print("Something strange is happend... aborting...\n" 
+                print("Something strange is happened... Aborting...\n"
                       "Try to reduce the range of interest...")
                 ok = False
                 p_old = -100500
-                
+
             print("          " , end='\r')
             self.Maxwell_p = p_old
             if ok: left_part  = p_old * (Vc - Vl) - self.integrate(Vl, Vc)
             if ok: right_part = self.integrate(Vc, Vr) - p_old * (Vr - Vc)
-            if ok: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
+            #if ok and not self.internal_error: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
+            if ok and not self.internal_error: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
+            if self.internal_error: self.internal_error_notification()
         else:
             print("We have negative initial pressure... Is there any adequate physics behind?..")
             self.Maxwell_p = 0
