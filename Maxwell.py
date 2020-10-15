@@ -33,7 +33,7 @@ class Maxwell:
         self.x = None
         self.y = None
 
-        self.plot = True
+        self.plot = False
         self.can_calculate = True
         # -1 hack
         # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
@@ -270,6 +270,8 @@ class Maxwell:
 #                    if p_try[0] < 1: print("Pressure is less than 1 bar... breaking..."); break
 
                     p_old = p_try[0]
+                    Vl_old = Vl
+                    Vr_old = Vr
                     if self.verbose: print(self.internal_name, "area difference:", current_difference, "| p:", p_try)
 
                     if priv_area_difference > current_difference:
@@ -294,6 +296,8 @@ class Maxwell:
 
             print("          " , end='\r')
             self.Maxwell_p = p_old
+            self.Maxwell_Vl = Vl_old
+            self.Maxwell_Vr = Vr_old
             if ok: left_part  = p_old * (Vc - Vl) - self.integrate(Vl, Vc)
             if ok: right_part = self.integrate(Vc, Vr) - p_old * (Vr - Vc)
             #if ok and not self.internal_error: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
