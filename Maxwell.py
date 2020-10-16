@@ -91,6 +91,7 @@ class Maxwell:
     def internal_error_notification(self):
             print("Internal error: ", self.internal_error)
 
+
     def check_xy(self, x,y):
         if self.verbose: print(self.internal_name, "checking data...")
         if self.verbose: print(" [Checking on] --> nan...")
@@ -261,6 +262,7 @@ class Maxwell:
                     except:
                         self.internal_error = 2
                         self.Maxwell_can_be_extended = True
+                        p_old = np.nan
                         break
                     left_part  = p_try * (Vc - Vl) - self.integrate(Vl, Vc)
                     right_part = self.integrate(Vc, Vr) - p_try * (Vr - Vc)
@@ -292,7 +294,7 @@ class Maxwell:
                 print("Something strange is happened... Aborting...\n"
                       "Try to reduce the range of interest...")
                 ok = False
-                p_old = -100500
+                p_old = np.nan
 
             print("          " , end='\r')
             self.Maxwell_p = p_old
