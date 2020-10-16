@@ -247,6 +247,10 @@ class Maxwell:
 
             if Vl < Vc < Vr and self.can_calculate:
                 ok = True
+                # initial values
+                p_old  = p_try
+                Vl_old = Vl
+                Vr_old = Vr
                 # Take all
                 self.fit(part="[A]")
                 left_part  = p_try * (Vc - Vl) - self.integrate(Vl, Vc)
@@ -254,6 +258,7 @@ class Maxwell:
 
                 priv_area_difference = 100500
                 current_difference = abs(left_part - right_part)
+                print("current differences:", current_difference)
                 while current_difference > self.tolerance and self.can_calculate:
                     if not self.verbose and _time%10==0 : print("Working " + next(spinner), end='\r')
 
