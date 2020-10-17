@@ -292,10 +292,21 @@ class Maxwell:
                     except:
                         self.internal_error = 2
                         self.Maxwell_can_be_extended = True
-                        p_old = np.nan
+                        p_old  = np.nan
+                        Vl_old = np.nan
+                        Vr_old = np.nan
                         break
-                    left_part  = p_try * (Vc - Vl) - self.integrate(Vl, Vc)
-                    right_part = self.integrate(Vc, Vr) - p_try * (Vr - Vc)
+                    try:
+                        # poor definition of Vc and Vr will fail here --> nan values should be returned
+                        left_part  = p_try * (Vc - Vl) - self.integrate(Vl, Vc)
+                        right_part = self.integrate(Vc, Vr) - p_try * (Vr - Vc)
+                    except:
+                        self.internal_error = 4
+                        self.Maxwell_can_be_extended = True  # is there any way to resolve it..?
+                        p_old  = np.nan
+                        Vl_old = np.nan
+                        Vr_old = np.nan
+                        break
 
                     current_difference = abs(left_part - right_part)
                     if priv_area_difference < current_difference: print("Previous difference was lower than current one... Breaking..."); break
@@ -330,8 +341,16 @@ class Maxwell:
             self.Maxwell_p = p_old
             self.Maxwell_Vl = Vl_old
             self.Maxwell_Vr = Vr_old
-            if ok: left_part  = p_old * (Vc - Vl) - self.integrate(Vl, Vc)
-            if ok: right_part = self.integrate(Vc, Vr) - p_old * (Vr - Vc)
+            try:
+                if ok: left_part  = p_old * (Vc - Vl) - self.integrate(Vl, Vc)
+                if ok: right_part = self.integrate(Vc, Vr) - p_old * (Vr - Vc)
+            except:
+                # poor definition of Vc and Vr will fail here --> nan values should be returned
+                self.internal_error = 4
+                self.Maxwell_can_be_extended = True  # is there any way to resolve it..?
+                p_old  = np.nan
+                Vl_old = np.nan
+                Vr_old = np.nan
             #if ok and not self.internal_error: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
             if ok and not self.internal_error: print(f"\nMaxwell pressure = {self.Maxwell_p}, | correspoding area {abs(left_part - right_part)}")
             if self.internal_error: self.internal_error_notification()
