@@ -21,7 +21,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 class Maxwell:
     def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
         self.internal_name = "[Maxwell Construction]"
-        print(self.internal_name, "v.0.2.2 [123]")
+        print(self.internal_name, "v.0.2.3 [124]")
         self.filename  = filename
         self.tolerance = tolerance
         self.verbose   = verbose
@@ -38,6 +38,7 @@ class Maxwell:
         # -1 hack
         # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
         self.internal_error = 0
+        self.notified = False
 
         self.xdata4fit = None
         self.ydata4fit = None
@@ -89,6 +90,7 @@ class Maxwell:
             self.plottedData=True
 
     def internal_error_notification(self):
+            self.notified = True
             print("Internal error: ", self.internal_error)
 
 
@@ -139,7 +141,7 @@ class Maxwell:
         self.xydata4fit = np.array(list(zip(self.xdata4fit, self.ydata4fit)))
         if self.plot: self.plot_data_of_interest()
 
-        tol_difference = 1.5   # TODO: now it is a HACK. Need to connect splines gap
+        tol_difference = 0.5   # experimental
         extrem1 = Maxwell.find_extrems(self.ydata4fit, "max")
         extrem2 = Maxwell.find_extrems(self.ydata4fit, "min")
 
@@ -151,7 +153,7 @@ class Maxwell:
             self.can_calculate = False
             self.Maxwell_can_be_extended = False
             self.internal_error = 1
-            print("No extrems1/2")
+            print("No extremes: minimum/maximum or both")
 
         if abs(extrem1 - extrem2) < tol_difference:
             print(self.internal_name + "For this data is impossible to create Maxwell construction...")
@@ -180,7 +182,7 @@ class Maxwell:
                 self.internal_error = 3
 
         if self.can_calculate: self.calculate_areas()
-        if not self.can_calculate:
+        if not self.can_calculate and not self.notified:
             self.Maxwell_p = np.nan
             if self.internal_error: self.internal_error_notification()
 
@@ -221,8 +223,14 @@ class Maxwell:
         self.fit(part="[L]", V1=V1, V2=V2)
         Vl = self.volume_fit(p_try)
         # Vc
-        self.fit(part="[C]", V1=V1, V2=V2)
-        Vc = self.volume_fit(p_try)
+        try:
+            self.fit(part="[C]", V1=V1, V2=V2)
+            Vc = self.volume_fit(p_try)
+        except:
+            # fix for prob
+            print("FITTING PROBLEM [C] | Please, check your data array. ")
+            self.internal_error = 4
+            self.can_calculate = False
         # Vr
         self.fit(part="[R]", V1=V1, V2=V2)
         Vr = self.volume_fit(p_try)
@@ -234,14 +242,19 @@ class Maxwell:
     def calculate_areas(self):
         if self.verbose: print(self.internal_name, "Working...")
         _time = 0
+        # initial values
+        p_old  = np.nan
+        Vl_old = np.nan
+        Vr_old = np.nan
 
         _, p2, V1, V2 = self.extremus()  # getting extremus for splitting region
 
-        p_try = p2 - p2 * 0.01   # nice start   maximum pressure - 1 %
-        if p_try[0] < 0: print("Initial pressure is negative... breaking..."); possible = False
+        p_try = p2 - p2 * 0.0001   # nice start   maximum pressure - 1 %
+        if p_try[0] < 0: print("Initial pressure is negative... Breaking..."); possible = False
         else: possible = True
 
         if possible:
+            print("p_try:", p_try)
             Vl, Vc, Vr = self.get_correspoding_volumes(p_try, V1, V2)
             print(f"Vl: {Vl}, Vc: {Vc}, Vr: {Vr}")
 
