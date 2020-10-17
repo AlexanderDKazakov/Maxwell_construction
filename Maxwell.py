@@ -21,7 +21,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 class Maxwell:
     def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
         self.internal_name = "[Maxwell Construction]"
-        print(self.internal_name, "v.0.2.3 [125]")
+        print(self.internal_name, "v.0.2.3 [126]")
         self.filename  = filename
         self.tolerance = tolerance
         self.verbose   = verbose
@@ -149,14 +149,14 @@ class Maxwell:
         extrem2 = Maxwell.get_correct_extremums(self.xydata4fit, extrem2)
 
         if len(extrem1) == 0 or len(extrem2)==0:
-            print(self.internal_name + "For this data is impossible to create Maxwell construction...")
+            print(self.internal_name, "For this data is impossible to create Maxwell construction...")
             self.can_calculate = False
             self.Maxwell_can_be_extended = False
             self.internal_error = 1
             print("No extremes: minimum/maximum or both")
 
         if abs(extrem1 - extrem2) < tol_difference:
-            print(self.internal_name + "For this data is impossible to create Maxwell construction...")
+            print(self.internal_name, "For this data is impossible to create Maxwell construction...")
             self.can_calculate = False
             self.Maxwell_can_be_extended = False
             self.internal_error = -1
@@ -170,7 +170,7 @@ class Maxwell:
             self.fit(part="[R]", V1=V1, V2=V2)
             right_extremum_pressure = self.pressure_fit(V2)[0]
             if left_pressure < right_extremum_pressure:
-                print(self.internal_name + "WARNING! Left pressure value is less than right extremum pressure value.\n"
+                print(self.internal_name, "WARNING! Left pressure value is less than right extremum pressure value.\n"
                 " It is hard to estimate Maxwell pressure for such system...\n"
                 " Aborting...")
                 self.can_calculate = False
