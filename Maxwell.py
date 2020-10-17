@@ -21,7 +21,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 class Maxwell:
     def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
         self.internal_name = "[Maxwell Construction]"
-        print(self.internal_name, "v.0.2.3 [124]")
+        print(self.internal_name, "v.0.2.3 [125]")
         self.filename  = filename
         self.tolerance = tolerance
         self.verbose   = verbose
@@ -220,8 +220,14 @@ class Maxwell:
     def get_correspoding_volumes(self, p_try, V1, V2):
         Vl = Vc = Vr = 0
         # Vl
-        self.fit(part="[L]", V1=V1, V2=V2)
-        Vl = self.volume_fit(p_try)
+        try:
+            self.fit(part="[L]", V1=V1, V2=V2)
+            Vl = self.volume_fit(p_try)
+        except:
+            # fix for prob
+            print("FITTING PROBLEM [L] | Please, check your data array. ")
+            self.internal_error = 4
+            self.can_calculate = False
         # Vc
         try:
             self.fit(part="[C]", V1=V1, V2=V2)
@@ -232,8 +238,14 @@ class Maxwell:
             self.internal_error = 4
             self.can_calculate = False
         # Vr
-        self.fit(part="[R]", V1=V1, V2=V2)
-        Vr = self.volume_fit(p_try)
+        try:
+            self.fit(part="[R]", V1=V1, V2=V2)
+            Vr = self.volume_fit(p_try)
+        except:
+            # fix for prob
+            print("FITTING PROBLEM [R] | Please, check your data array. ")
+            self.internal_error = 4
+            self.can_calculate = False
         return Vl, Vc, Vr
 
     def integrate(self, a, b):
