@@ -262,8 +262,9 @@ class Maxwell:
         _, p2, V1, V2 = self.extremus()  # getting extremus for splitting region
 
         p_try = p2 - p2 * 0.0001   # nice start   maximum pressure - 1 %
-        if p_try[0] < 0: print("Initial pressure is negative... Breaking..."); possible = False
-        else: possible = True
+        possible = True  # allowing all both positive and negative values...
+        #if p_try[0] < 0: print("Initial pressure is negative... Breaking..."); possible = False
+        #else: possible = True
 
         if possible:
             print("p_try:", p_try)
