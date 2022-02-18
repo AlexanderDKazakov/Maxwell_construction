@@ -21,7 +21,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 
 class Maxwell:
-    def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
+    def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, plot=False, verbose=False):
         self.internal_name = "[Maxwell Construction]"
         print(self.internal_name, "v.0.2.3 [126]")
         self.filename  = filename
@@ -36,7 +36,7 @@ class Maxwell:
         self.x = None
         self.y = None
 
-        self.plot = True
+        self.plot = plot
         self.can_calculate = True
         # -1 hack
         # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
