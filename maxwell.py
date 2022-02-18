@@ -269,7 +269,7 @@ class Maxwell:
         Vmax  -- volume of maximum
         Vright -- volume of cross right
         '''
-        return self.Vleft, self.Vminimum, self.Vmaximum, self.Vright
+        return (self.Vleft[0], self.Vminimum[0], self.Vmaximum[0], self.Vright[0])
 
     def calculate_areas(self):
         if self.verbose: print(self.internal_name, "Working...")
