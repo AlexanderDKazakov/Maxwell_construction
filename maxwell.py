@@ -5,11 +5,13 @@ from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
 
 try:
-    from Plotter import Plotter
+    from vplotter import Plotter
     plotter_available = True
 except Exception:
     print("[Maxwell Construction] Plotter is not available.")
     plotter_available = False
+
+print("Plotter available:", plotter_available)
 
 from scipy.signal import argrelextrema
 from scipy.integrate import quad
@@ -19,21 +21,22 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 
 
 class Maxwell:
-    def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, verbose=False):
+    def __init__(self, filename=None, region_of_interest=None, number_of_points=100, x=None, y=None, tolerance=1e-3, plot=False, verbose=False):
         self.internal_name = "[Maxwell Construction]"
         print(self.internal_name, "v.0.2.3 [126]")
         self.filename  = filename
         self.tolerance = tolerance
         self.verbose   = verbose
 
-        if region_of_interest != "all": self.region_of_interest = [float(x) for x in region_of_interest.split(":")]
+        if region_of_interest != "all":
+            self.region_of_interest = [float(x) for x in region_of_interest.split(":")]
         else: self.region_of_interest = "all"
 
         self.number_of_points = int(number_of_points)
         self.x = None
         self.y = None
 
-        self.plot = False
+        self.plot = plot
         self.can_calculate = True
         # -1 hack
         # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
@@ -42,6 +45,11 @@ class Maxwell:
 
         self.xdata4fit = None
         self.ydata4fit = None
+
+        self.Vminimum = None
+        self.Vmaximum = None
+        self.Vleft    = None
+        self.Vright   = None
 
         self.plotter = None
 
@@ -170,9 +178,11 @@ class Maxwell:
             self.fit(part="[R]", V1=V1, V2=V2)
             right_extremum_pressure = self.pressure_fit(V2)[0]
             if left_pressure < right_extremum_pressure:
-                print(self.internal_name, "WARNING! Left pressure value is less than right extremum pressure value.\n"
-                " It is hard to estimate Maxwell pressure for such system...\n"
-                " Aborting...")
+                print(self.internal_name,
+                      "ERROR! Left pressure value is less than right extremum pressure value.\n"
+                      " It is hard to estimate Maxwell pressure for such system...\n"
+                      " Aborting..."
+                )
                 self.can_calculate = False
                 self.Maxwell_V1 = self.xdata4fit[-1]
                 self.Maxwell_p1 = self.ydata4fit[-1]
@@ -251,6 +261,16 @@ class Maxwell:
     def integrate(self, a, b):
         return quad(self.pressure_fit, a=a, b=b)[0]  # return value integral between a, b
 
+    def get_volumes(self):
+        '''
+        Returns corresponding volumes:
+        Vleft -- volume of cross left
+        Vmin  -- volume of minimum
+        Vmax  -- volume of maximum
+        Vright -- volume of cross right
+        '''
+        return (self.Vleft[0], self.Vminimum[0], self.Vmaximum[0], self.Vright[0])
+
     def calculate_areas(self):
         if self.verbose: print(self.internal_name, "Working...")
         _time = 0
@@ -260,6 +280,8 @@ class Maxwell:
         Vr_old = np.nan
 
         _, p2, V1, V2 = self.extremus()  # getting extremus for splitting region
+        self.Vminimum = V1
+        self.Vmaximum = V2
 
         p_try = p2 - p2 * 0.0001   # nice start   maximum pressure - 1 %
         possible = True  # allowing all both positive and negative values...
@@ -325,12 +347,16 @@ class Maxwell:
 
                     priv_area_difference = current_difference
 
+
                     # animation
                     if self.plot:
                         x = np.linspace(start=self.region_of_interest[0], stop=self.region_of_interest[1], num=10)
                         y = [p_try[0] for i in range(len(x))]
                         if plotter_available: self.plotter.plot(x=x ,y=y , key_name_f="pressure" + str('{:.3f}'.format(p_try[0])), animation=True)
                     _time += 1
+
+                self.Vleft  = Vl
+                self.Vright = Vr
 
             else:
                 print("Something strange is happened... Aborting...\n"
