@@ -8,6 +8,8 @@ from scipy.interpolate import UnivariateSpline
 from dataclasses       import dataclass, field
 from scipy.signal      import argrelextrema
 from scipy.integrate   import quad
+import random
+import time
 
 import itertools
 spinner = itertools.cycle(['-', '/', '|', '\\'])
@@ -28,7 +30,7 @@ class Maxwell:
     region_of_interest : Union[str, Tuple[float, float]]  = "all"
     x                  : List[float]                      = None
     y                  : List[float]                      = None
-    number_of_points   : int                              = 100,
+    number_of_points   : int                              = -1,
     tolerance          : float                            = 0.5
     use_cols           : Tuple[int, int]                  = (0, 1)
 
@@ -39,8 +41,6 @@ class Maxwell:
     #self.xdata4fit = None
     _x                 : np.array                         = None
     _y                 : np.array                         = None
-    _spl               : UnivariateSpline                 = None
-    _xdata_spl         : np.array                         = None
     _interpolations    : List                             = field(default_factory=list)
     _rev_interpolations: List                             = field(default_factory=list)
     #self.ydata4fit = None
@@ -105,28 +105,6 @@ class Maxwell:
             print(f"Trouble: {e}")
             out = -100500
         return out
-
-    @staticmethod
-    def fit_region(x, y):
-        return interp1d(x, y, kind='cubic')
-
-    @staticmethod
-    def get_correct_extremums(data, extrems):
-        correct_ext = 0; volume4extr = []
-        for extrem in extrems:
-            _ = data[:,1] == extrem
-            cor_vol = data[:,0][_]
-            volume4extr.append(cor_vol)
-        try:
-            correct_extr_volume = min(volume4extr)
-            indx_correct_volume = data[:,0] == correct_extr_volume
-            correct_ext = data[:,1][indx_correct_volume]
-        except ValueError: return extrems
-        return correct_ext
-
-    def internal_error_notification(self):
-        self.notified = True
-        print("Internal error: ", self.internal_error)
 
     @staticmethod
     def _check_xy(x: List[float], y: List[float]):
@@ -274,7 +252,8 @@ class Maxwell:
             try:
                 self._x, self._y = np.loadtxt(self.filename, unpack=True, usecols=self.use_cols);
             except Exception as e:
-                print(f"Trouble: {e}");
+                print(f"Error: {e}");
+                sys.exit(1)
         else:
             print(f"Error! You have to provide either *x* and *y* [V vs. p] or *filename* ")
             sys.exit(1)
@@ -368,10 +347,50 @@ Taken (minimal available):
 
         print("Working...")
 
-        import random
-        import time
+        if self.number_of_points != -1: self.go_brute()
+        else:                           self.go_smart()
+
+        if self.diff_prev > self.tolerance and self.diff_prev != 100500:
+            print(f"""
+Maxwell found some pressure, but the area difference [{self.diff_prev}] is higher than tolerance [{self.tolerance}].
+Thus the Maxwell pressure will be reset.
+""")
+            self.maxwell_p = np.nan
+            self.left_part_final = 0
+            self.right_part_final = 0
+
+        if self.should_plot and plotter_available:
+            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0], key_name="L", plot_line=False,)
+            self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
+            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0], key_name="R", plot_line=False,)
+        self.summary()
+        print(self.get_volumes())
+        if self.should_plot and plotter_available:
+            if not np.isnan(self.maxwell_p):
+                self.plotter.plot(
+                    y=[self.maxwell_p for i in range(10)],
+                    x=np.linspace(0, 1, 10),
+                    key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
+
+    def go_brute(self):
+        for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
+            Vl, Vc, Vr = self.get_Vs(p_c=p_c)
+            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
+
+            left_part, right_part = self.get_parts(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr)
+            if left_part is None or right_part is None: continue
+
+            diff = abs(right_part - left_part)
+            if self.diff_prev > diff:
+                self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
+                self.diff_prev = diff
+            else:
+                break
+            if self.verbose:
+                print(f"p_c: {p_c} | Area diff:", diff)
+
+    def go_smart(self):
         # step_t+1 = step_t - ita * grad f(step)
-        #for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
 
         self.diff_prev = 100500
         diff = 100500
@@ -410,8 +429,6 @@ Taken (minimal available):
             diff = abs(right_part - left_part)
             if self.diff_prev > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
-            #if self.verbose:
-            #    print(f"Area diff:", diff)
 
             delta_p_c  = self.p_c_prev - p_c
             delta_diff = self.diff_prev - diff
@@ -422,28 +439,6 @@ Taken (minimal available):
             eta = 1/abs(grad_f - grad_f_priv)
             #time.sleep(1.0)
             print(f"p_c[{i}]: {p_c} | eta: {eta} | gradient: {grad_f} | area_diff: {diff}")
-
-        if self.diff_prev > self.tolerance and self.diff_prev != 100500:
-            print(f"""
-Maxwell found some pressure, but the area difference [{self.diff_prev}] is higher than tolerance [{self.tolerance}].
-Thus the Maxwell pressure will be reset.
-""")
-            self.maxwell_p = np.nan
-            self.left_part_final = 0
-            self.right_part_final = 0
-
-        if self.should_plot and plotter_available:
-            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0], key_name="L", plot_line=False,)
-            self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
-            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0], key_name="R", plot_line=False,)
-        self.summary()
-        print(self.get_volumes())
-        if self.should_plot and plotter_available:
-            if not np.isnan(self.maxwell_p):
-                self.plotter.plot(
-                    y=[self.maxwell_p for i in range(10)],
-                    x=np.linspace(0, 1, 10),
-                    key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
@@ -493,7 +488,7 @@ Thus the Maxwell pressure will be reset.
         print(f"""
 Summary:
     Maxwell pressure {self.maxwell_p}
-    Area difference {self.diff_prev if not self.diff_prev == 100500 else np.nan} | tolerance [{self.tolerance}]
+    Area difference {self.diff_prev if not self.diff_prev == 100500 else np.nan} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
     Area[L] {self.left_part_final} | [R] {self.right_part_final}
 """)
 
@@ -562,7 +557,7 @@ if __name__=="__main__":
     my_parser.add_argument('--verbose', dest='verbose', action='store_true',  help="make the Maxwell verbose")
     my_parser.add_argument('--plot', dest='plot', action='store_true',  help="plotting")
     my_parser.set_defaults(region_of_interest="all")
-    my_parser.set_defaults(number_of_points=100)
+    my_parser.set_defaults(number_of_points=-1)
     my_parser.set_defaults(x_column=0)
     my_parser.set_defaults(y_column=1)
     my_parser.set_defaults(verbose=False)
