@@ -365,11 +365,9 @@ Taken (minimal available):
                 self.Vl_Vc_defined.append(inter)
                 self.Vc_Vr_defined.append(inter)
 
-        i_p_increase = 0
         print("Working...")
 
         for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
-            if i_p_increase > 100: break
 
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
             if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
@@ -381,12 +379,10 @@ Taken (minimal available):
             if self.diff_prev > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
                 self.diff_prev = diff
-                i_p_increase -= 1
             else:
-                i_p_increase += 1
                 break
             if self.verbose:
-                print(f"Area diff[{i_p_increase}]:", diff)
+                print(f"Area diff:", diff)
 
         if self.diff_prev > self.tolerance and self.diff_prev != 100500:
             print(f"""
