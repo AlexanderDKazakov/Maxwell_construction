@@ -356,70 +356,37 @@ Taken (minimal available):
         inter_xy = self.fit(p1=self._p_maximum,    p2=self._p_right_bound, key_name="R")
         # all fit are done
         # starting from maximum and go to the minimum
-        Vl, Vc, Vr = np.nan, np.nan, np.nan
-        Vl_Vc_defined = []
-        Vc_Vr_defined = []
+        self.Vl_Vc_defined = [];
+        self.Vc_Vr_defined = []
         for part, inter in self._interpolations:
-            if part == "L": Vl_Vc_defined.append(inter)
-            if part == "R": Vc_Vr_defined.append(inter)
+            if part == "L": self.Vl_Vc_defined.append(inter)
+            if part == "R": self.Vc_Vr_defined.append(inter)
             if part == "C":
-                Vl_Vc_defined.append(inter)
-                Vc_Vr_defined.append(inter)
+                self.Vl_Vc_defined.append(inter)
+                self.Vc_Vr_defined.append(inter)
 
-        self.maxwell_p = np.nan
         i_p_increase = 0
         print("Working...")
+
         for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
             if i_p_increase > 100: break
-            for idx, (part, inter) in enumerate(self._rev_interpolations):
-                #print(idx, part, inter)
-                if part == "C":
-                    try:
-                        Vc = inter(p_c)
-                        #self.plotter.plot(y=p_c, key_name="C", plot_line=False, animation=True, x=Vc,)
-                        #time.sleep(0.01)
-                    except: pass
-                if part == "L":
-                    try:
-                        Vl = inter(p_c)
-                        #self.plotter.plot(y=p_c, key_name="L", plot_line=False, animation=True, x=Vl,)
-                        #time.sleep(0.01)
-                    except: pass
-                if part == "R":
-                    try:
-                        Vr = inter(p_c)
-                        #self.plotter.plot(y=p_c, key_name="R", plot_line=False, animation=True, x=Vr,)
-                        #time.sleep(0.01)
-                    except: pass
-                # check if Vl, Vc and Vr are valid in the same time
-                if (not np.isnan(Vl)) and (not np.isnan(Vc)) and (not np.isnan(Vr)):
-                    #print(Vl, Vc, Vr)
-                    try:
-                        #self.plotter.plot(
-                        #    y=[p_c for i in range(50)],
-                        #    x=np.linspace(0, 1, 50),
-                        #    key_name_f="pressure" + str('{:.3f}'.format(p_c)), animation=True)
-                        #time.sleep(0.01)
 
-                        left_part  = p_c * (Vc - Vl) - self.integrate(a=Vl, b=Vc, fs=Vl_Vc_defined)
-                        right_part = self.integrate(a=Vc, b=Vr, fs=Vc_Vr_defined) - p_c * (Vr - Vc)
-                        diff = abs(left_part-right_part)
-                        if self.diff_prev > diff:
-                            self.maxwell_p = p_c
-                            self._p_left = np.array((Vl, p_c))
-                            self._p_center = np.array((Vc, p_c))
-                            self._p_right= np.array((Vr, p_c))
-                            self.left_part_final = left_part
-                            self.right_part_final = right_part
-                            self.diff_prev = diff
-                            i_p_increase -= 1
-                        else:
-                            i_p_increase += 1
-                            break
-                        if self.verbose:
-                            print(f"Area diff[{i_p_increase}]:", diff)
-                    except Exception as e:
-                        pass
+            Vl, Vc, Vr = self.get_Vs(p_c=p_c)
+            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
+
+            left_part, right_part = self.get_parts(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr)
+            if left_part is None or right_part is None: continue
+
+            diff = abs(right_part - left_part)
+            if self.diff_prev > diff:
+                self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
+                self.diff_prev = diff
+                i_p_increase -= 1
+            else:
+                i_p_increase += 1
+                break
+            if self.verbose:
+                print(f"Area diff[{i_p_increase}]:", diff)
 
         if self.diff_prev > self.tolerance and self.diff_prev != 100500:
             print(f"""
@@ -441,7 +408,49 @@ Thus the Maxwell pressure will be reset.
                 x=np.linspace(0, 1, 10),
                 key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
 
-    def go(self):
+
+    def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
+        self.maxwell_p = p_c
+        self._p_left = np.array((Vl, p_c))
+        self._p_center = np.array((Vc, p_c))
+        self._p_right= np.array((Vr, p_c))
+        self.left_part_final = left_part
+        self.right_part_final = right_part
+
+    def get_Vs(self, p_c):
+        Vl, Vc, Vr = np.nan, np.nan, np.nan
+        for idx, (part, inter) in enumerate(self._rev_interpolations):
+            #print(idx, part, inter)
+            if part == "C":
+                try:
+                    Vc = inter(p_c)
+                    #self.plotter.plot(y=p_c, key_name="C", plot_line=False, animation=True, x=Vc,)
+                    #time.sleep(0.01)
+                except: pass
+            if part == "L":
+                try:
+                    Vl = inter(p_c)
+                    #self.plotter.plot(y=p_c, key_name="L", plot_line=False, animation=True, x=Vl,)
+                    #time.sleep(0.01)
+                except: pass
+            if part == "R":
+                try:
+                    Vr = inter(p_c)
+                    #self.plotter.plot(y=p_c, key_name="R", plot_line=False, animation=True, x=Vr,)
+                    #time.sleep(0.01)
+                except: pass
+        return Vl, Vc, Vr
+
+    def get_parts(self, p_c, Vl, Vc, Vr):
+        left_part = None
+        right_part = None
+        try:
+            left_part  = p_c * (Vc - Vl) - self.integrate(a=Vl, b=Vc, fs=self.Vl_Vc_defined)
+            right_part = self.integrate(a=Vc, b=Vr, fs=self.Vc_Vr_defined) - p_c * (Vr - Vc)
+        except Exception as e:
+            pass
+
+        return left_part, right_part
 
     def summary(self):
         print(f"""
