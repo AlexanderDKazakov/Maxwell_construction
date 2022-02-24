@@ -268,7 +268,7 @@ class Maxwell:
         # x and y provided
         if x is not None and y is not None:
             if self.verbose: print(f"{self.internal_name} Checking data... [NaN...]")
-            self._x, self._y = Maxwell.check_xy(x=x, y=y)
+            self._x, self._y = Maxwell._check_xy(x=x, y=y)
         elif filename is not None:
             if self.verbose: print(f"{self.internal_name} File opening... [{self.filename}]")
             try:
