@@ -89,7 +89,8 @@ class Maxwell:
             self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name="provided data")
 
         maxwell_curve_xy = self.get_maxwell_curve()
-        self.plotter.plot(x=maxwell_curve_xy[:,0], y=maxwell_curve_xy[:,1], key_name="maxwell curve")
+        if self.should_plot and plotter_available:
+            self.plotter.plot(x=maxwell_curve_xy[:,0], y=maxwell_curve_xy[:,1], key_name="maxwell curve")
 
 
     @staticmethod
@@ -367,22 +368,60 @@ Taken (minimal available):
 
         print("Working...")
 
-        for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
+        import random
+        import time
+        # step_t+1 = step_t - ita * grad f(step)
+        #for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
+
+        self.diff_prev = 100500
+        diff = 100500
+
+        #p_c = self._p_maximum[1] # initial value
+        p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
+        self.p_c_prev = p_c
+
+        ita = 1.0
+        grad_f = 0.1 #(self.p_c_prev-p_c)/(self.diff_prev - diff)
+        i = 0
+        while True:
+            i += 1
+            if i > 100: break
+            if self.diff_prev < self.tolerance: break
+
+            if i==1:
+                p_c = self._p_maximum[1]  # initial_value
+            if p_c < self._p_minimum[1] or p_c > self._p_maximum[1]:
+                p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
+
+            p_c = p_c - ita * grad_f
+
 
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
-            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
+            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr):
+                #p_c = self._p_maximum[1]  # initial_value
+                #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)
+                continue
 
             left_part, right_part = self.get_parts(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr)
-            if left_part is None or right_part is None: continue
+            if left_part is None or right_part is None:
+                #p_c = self._p_maximum[1]  # initial_value
+                #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)
+                continue
 
             diff = abs(right_part - left_part)
             if self.diff_prev > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
-                self.diff_prev = diff
-            else:
-                break
-            if self.verbose:
-                print(f"Area diff:", diff)
+            #if self.verbose:
+            #    print(f"Area diff:", diff)
+
+            delta_p_c  = self.p_c_prev - p_c
+            delta_diff = self.diff_prev - diff
+            grad_f = delta_p_c/delta_diff
+            #grad_f = delta_diff/delta_p_c
+            self.p_c_prev = p_c
+            self.diff_prev = diff
+            #time.sleep(1.0)
+            print(f"p_c[{i}]: {p_c} | gradient: {grad_f} | area_diff: {diff}")
 
         if self.diff_prev > self.tolerance and self.diff_prev != 100500:
             print(f"""
@@ -393,16 +432,18 @@ Thus the Maxwell pressure will be reset.
             self.left_part_final = 0
             self.right_part_final = 0
 
-        self.plotter.plot(y=self._p_left[1],   x=self._p_left[0], key_name="L", plot_line=False,)
-        self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
-        self.plotter.plot(y=self._p_right[1],  x=self._p_right[0], key_name="R", plot_line=False,)
+        if self.should_plot and plotter_available:
+            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0], key_name="L", plot_line=False,)
+            self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
+            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0], key_name="R", plot_line=False,)
         self.summary()
         print(self.get_volumes())
-        if not np.isnan(self.maxwell_p):
-            self.plotter.plot(
-                y=[self.maxwell_p for i in range(10)],
-                x=np.linspace(0, 1, 10),
-                key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
+        if self.should_plot and plotter_available:
+            if not np.isnan(self.maxwell_p):
+                self.plotter.plot(
+                    y=[self.maxwell_p for i in range(10)],
+                    x=np.linspace(0, 1, 10),
+                    key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
