@@ -380,21 +380,20 @@ Taken (minimal available):
         p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
         self.p_c_prev = p_c
 
-        ita = 1.0
+        eta = 1.0
         grad_f = 0.1 #(self.p_c_prev-p_c)/(self.diff_prev - diff)
+        grad_f_priv = grad_f
         i = 0
         while True:
             i += 1
             if i > 100: break
             if self.diff_prev < self.tolerance: break
 
-            if i==1:
-                p_c = self._p_maximum[1]  # initial_value
+            if i==1: p_c = self._p_maximum[1]  # initial_value
             if p_c < self._p_minimum[1] or p_c > self._p_maximum[1]:
                 p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
 
-            p_c = p_c - ita * grad_f
-
+            p_c = p_c - eta * grad_f
 
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
             if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr):
@@ -420,8 +419,9 @@ Taken (minimal available):
             #grad_f = delta_diff/delta_p_c
             self.p_c_prev = p_c
             self.diff_prev = diff
+            eta = 1/abs(grad_f - grad_f_priv)
             #time.sleep(1.0)
-            print(f"p_c[{i}]: {p_c} | gradient: {grad_f} | area_diff: {diff}")
+            print(f"p_c[{i}]: {p_c} | eta: {eta} | gradient: {grad_f} | area_diff: {diff}")
 
         if self.diff_prev > self.tolerance and self.diff_prev != 100500:
             print(f"""
