@@ -514,18 +514,17 @@ Summary:
     def get_maxwell_curve(self):
         # introduce left_point and right_point in the data provided by user
         # substitute in between by maxwell_p
-
-        #self._xy = self._xy[self._xy[:,0].argsort()]
-        # xy = np.insert(xy, 0, xy_add, axis=0)
         maxwell_curve = np.copy(self._xy)
         # adding the left point and right
         maxwell_curve = np.insert(maxwell_curve, 0, self._p_left, axis=0)
         maxwell_curve = np.insert(maxwell_curve, 0, self._p_right, axis=0)
+
         maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
         # substitute in between
-        #print( np.where( (maxwell_curve[:,0] > self._p_left[0])&(maxwell_curve[:,0]<self._p_right[0])) )
-        #maxwell_curve[(self._xy[:,0] > self._p_left[0]) & (self._xy[:,0] < self._p_right[0])] = self.maxwell_p
-
+        maxwell_curve[:,1][(
+            (maxwell_curve[:,0]>=self._p_left[0]) & (maxwell_curve[:,0] <= self._p_right[0])
+        )] = self.maxwell_p
+        maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
         return maxwell_curve
 
 
