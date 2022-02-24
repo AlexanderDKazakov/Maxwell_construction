@@ -515,16 +515,18 @@ Summary:
         # introduce left_point and right_point in the data provided by user
         # substitute in between by maxwell_p
         maxwell_curve = np.copy(self._xy)
-        # adding the left point and right
-        maxwell_curve = np.insert(maxwell_curve, 0, self._p_left, axis=0)
-        maxwell_curve = np.insert(maxwell_curve, 0, self._p_right, axis=0)
+        # if maxwell success
+        if not np.isnan(self.maxwell_p):
+            # adding the left point and right
+            maxwell_curve = np.insert(maxwell_curve, 0, self._p_left, axis=0)
+            maxwell_curve = np.insert(maxwell_curve, 0, self._p_right, axis=0)
 
-        maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
-        # substitute in between
-        maxwell_curve[:,1][(
-            (maxwell_curve[:,0]>=self._p_left[0]) & (maxwell_curve[:,0] <= self._p_right[0])
-        )] = self.maxwell_p
-        maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
+            maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
+            # substitute in between
+            maxwell_curve[:,1][(
+                (maxwell_curve[:,0]>=self._p_left[0]) & (maxwell_curve[:,0] <= self._p_right[0])
+            )] = self.maxwell_p
+            maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
         return maxwell_curve
 
 
