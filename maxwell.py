@@ -23,18 +23,20 @@ except Exception:
 
 @dataclass
 class Maxwell:
-    __version__        : str                              = "0.3.0 [130]"
+    __version__        : str                              = "0.3.1 [135]"
     internal_name      : str                              = "[Maxwell Construction]"
     verbose            : bool                             = False
     filename           : str                              = None
     region_of_interest : Union[str, Tuple[float, float]]  = "all"
     x                  : List[float]                      = None
     y                  : List[float]                      = None
-    number_of_points   : int                              = -1,
+    number_of_points   : int                              = -1
+    iteration_limit    : int                              = 100
     tolerance          : float                            = 0.5
+    return_best        : bool                             = False
     use_cols           : Tuple[int, int]                  = (0, 1)
 
-    should_plot       : bool                             = False
+    should_plot        : bool                             = False
     _can_calculate     : bool                             = True
     _internal_error    : int                              = 0
     _notified          : bool                             = False
@@ -279,7 +281,6 @@ class Maxwell:
         self.maxwell_p   = np.nan
         self.left_part_final  = 0
         self.right_part_final = 0
-        self.diff_prev        = 100500
         #
         self._p_left_bound  = _xy[0]
         self._p_right_bound = _xy[-1]
@@ -346,17 +347,20 @@ Taken (minimal available):
                 self.Vc_Vr_defined.append(inter)
 
         print("Working...")
+        self.smallest_p    = 100500
+        self.smallest_diff = 100500
+        self.smallest_i    = 100500
 
         if self.number_of_points != -1: self.go_brute()
         else:                           self.go_smart()
 
-        if self.diff_prev > self.tolerance and self.diff_prev != 100500:
+        if self.smallest_diff > self.tolerance and self.smallest_diff != 100500 and not self.return_best:
             print(f"""
-Maxwell found some pressure, but the area difference [{self.diff_prev}] is higher than tolerance [{self.tolerance}].
-Thus the Maxwell pressure will be reset.
+Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], but the area difference [{self.smallest_diff:4.5}] is higher than tolerance [{self.tolerance}]. Thus the Maxwell pressure will be reset.
 """)
-            self.maxwell_p = np.nan
-            self.left_part_final = 0
+            self.maxwell_p        = np.nan
+            self.smallest_diff    = 0
+            self.left_part_final  = 0
             self.right_part_final = 0
 
         if self.should_plot and plotter_available:
@@ -373,7 +377,9 @@ Thus the Maxwell pressure will be reset.
                     key_name_f="pressure" + str('{:.3f}'.format(self.maxwell_p)))
 
     def go_brute(self):
-        for p_c in np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points):
+        i_growth = 0
+        for i, p_c in enumerate(np.linspace(self._p_maximum[1], self._p_minimum[1], self.number_of_points)):
+            if i_growth > 1000: break
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
             if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
 
@@ -381,32 +387,33 @@ Thus the Maxwell pressure will be reset.
             if left_part is None or right_part is None: continue
 
             diff = abs(right_part - left_part)
-            if self.diff_prev > diff:
+            if self.smallest_diff > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
-                self.diff_prev = diff
+                self.smallest_diff = diff
             else:
-                break
+                i_growth += 1
             if self.verbose:
-                print(f"p_c: {p_c} | Area diff:", diff)
+                print(f"[i:{i:3}] p: {p_c:5.4} | diff: {diff:2.3f}")
 
     def go_smart(self):
         # step_t+1 = step_t - ita * grad f(step)
 
-        self.diff_prev = 100500
-        diff = 100500
+        diff_prev = 100500
+        diff      = 100500
 
-        #p_c = self._p_maximum[1] # initial value
-        p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
+        p_c = self._p_maximum[1] # initial value
+        #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
         self.p_c_prev = p_c
 
         eta = 1.0
-        grad_f = 0.1 #(self.p_c_prev-p_c)/(self.diff_prev - diff)
+        grad_f = 0.1 #(self.p_c_prev-p_c)/(diff_prev - diff)
         grad_f_priv = grad_f
         i = 0
         while True:
             i += 1
-            if i > 100: break
-            if self.diff_prev < self.tolerance: break
+            #print(f"[i:{i:3}]: p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:+2.3e} | diff: {diff:2.3f}")
+            if i >= self.iteration_limit: break
+            if self.smallest_diff < self.tolerance: break
 
             if i==1: p_c = self._p_maximum[1]  # initial_value
             if p_c < self._p_minimum[1] or p_c > self._p_maximum[1]:
@@ -415,30 +422,24 @@ Thus the Maxwell pressure will be reset.
             p_c = p_c - eta * grad_f
 
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
-            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr):
-                #p_c = self._p_maximum[1]  # initial_value
-                #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)
-                continue
+            if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr): continue
 
             left_part, right_part = self.get_parts(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr)
-            if left_part is None or right_part is None:
-                #p_c = self._p_maximum[1]  # initial_value
-                #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)
-                continue
+            if left_part is None or right_part is None: continue
 
             diff = abs(right_part - left_part)
-            if self.diff_prev > diff:
+            if self.smallest_diff > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
+                self.smallest_diff = diff
+                self.smallest_i = i
 
-            delta_p_c  = self.p_c_prev - p_c
-            delta_diff = self.diff_prev - diff
-            grad_f = delta_p_c/delta_diff
-            #grad_f = delta_diff/delta_p_c
+            delta_p_c     = self.p_c_prev - p_c
+            delta_diff    = diff_prev - diff
+            grad_f        = delta_p_c/delta_diff
             self.p_c_prev = p_c
-            self.diff_prev = diff
-            eta = 1/abs(grad_f - grad_f_priv)
-            #time.sleep(1.0)
-            print(f"p_c[{i}]: {p_c} | eta: {eta} | gradient: {grad_f} | area_diff: {diff}")
+            diff_prev     = diff
+            eta = diff*1/abs(grad_f - grad_f_priv)
+            print(f"[i:{i:3}] p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:2.3e} | diff: {diff:2.3e}")
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
@@ -448,6 +449,7 @@ Thus the Maxwell pressure will be reset.
         self._p_right= np.array((Vr, p_c))
         self.left_part_final = left_part
         self.right_part_final = right_part
+
 
     def get_Vs(self, p_c):
         Vl, Vc, Vr = np.nan, np.nan, np.nan
@@ -488,7 +490,7 @@ Thus the Maxwell pressure will be reset.
         print(f"""
 Summary:
     Maxwell pressure {self.maxwell_p}
-    Area difference {self.diff_prev if not self.diff_prev == 100500 else np.nan} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
+    Area difference {self.smallest_diff} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
     Area[L] {self.left_part_final} | [R] {self.right_part_final}
 """)
 
@@ -505,6 +507,11 @@ Summary:
         else:
             # not defined
             return (np.nan, np.nan, np.nan, np.nan)
+
+    def get_tolerance(self):
+        if self.smallest_diff != 100500:
+            return self.smallest_diff
+        else: return np.nan
 
     def get_maxwell_curve(self):
         # introduce left_point and right_point in the data provided by user
@@ -536,15 +543,20 @@ if __name__=="__main__":
                            )
     my_parser.add_argument('-r',  '--region_of_interest',
                            action='store', type=str, required=False,
-                           help="Region of interest in terms of volume. Ex. 0.2:10 Default: 'all range'",
+                           help="Region of interest in terms of volume. Ex. 0.2:10. Default: 'all'",
                            )
     my_parser.add_argument('-n',  '--number_of_points',
                            action='store', type=int, required=False,
-                           help="Number of point to use when fit you data with spline. Default: '100'",
+                           help="Number of point to use when fit you data with spline. Default: '-1'.\n"
+                           "All positive values refer to number of points '-1' refers to smart search.",
                            )
     my_parser.add_argument('-t',  '--tolerance',
                            action='store', type=float, required=False,
                            help="Area tolerance difference. Default: '0.5'",
+                           )
+    my_parser.add_argument('-l',  '--iteration_limit',
+                           action='store', type=int, required=False,
+                           help="Iteration limit. Default: '100'",
                            )
     my_parser.add_argument('-x',  '--x_column',
                            action='store', type=int, required=False,
@@ -556,13 +568,16 @@ if __name__=="__main__":
                            )
     my_parser.add_argument('--verbose', dest='verbose', action='store_true',  help="make the Maxwell verbose")
     my_parser.add_argument('--plot', dest='plot', action='store_true',  help="plotting")
+    my_parser.add_argument('--return_best', dest='return_best', action='store_true',  help="return anything what found")
     my_parser.set_defaults(region_of_interest="all")
     my_parser.set_defaults(number_of_points=-1)
     my_parser.set_defaults(x_column=0)
     my_parser.set_defaults(y_column=1)
     my_parser.set_defaults(verbose=False)
     my_parser.set_defaults(plot=False)
+    my_parser.set_defaults(return_best=False)
     my_parser.set_defaults(tolerance=0.5)
+    my_parser.set_defaults(iteration_limit=100)
     args = my_parser.parse_args()
 
     if args.region_of_interest != "all":
@@ -574,7 +589,6 @@ if __name__=="__main__":
     else:
         region_of_interest = args.region_of_interest
 
-
     #print(args)
     m = Maxwell(
         filename=args.input,
@@ -582,6 +596,8 @@ if __name__=="__main__":
         number_of_points=args.number_of_points,
         should_plot=args.plot,
         tolerance= args.tolerance,
+        iteration_limit=args.iteration_limit,
         verbose=args.verbose,
+        return_best=args.return_best,
     )
     input("Press any key to continue...")
