@@ -278,6 +278,7 @@ class Maxwell:
 
     def processing_data(self, _xy: np.array):
         #
+        self.smallest_i       = np.nan
         self.maxwell_p        = np.nan
         self.smallest_diff    = 100500
         self.left_part_final  = 0
@@ -348,8 +349,6 @@ Taken (minimal available):
                 self.Vc_Vr_defined.append(inter)
 
         print("Working...")
-        self.smallest_p    = 100500
-        self.smallest_i    = 100500
 
         if self.number_of_points != -1: self.go_brute()
         else:                           self.go_smart()
@@ -364,11 +363,10 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             self.right_part_final = 0
 
         if self.should_plot and plotter_available:
-            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0], key_name="L", plot_line=False,)
+            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0],   key_name="L", plot_line=False,)
             self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
-            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0], key_name="R", plot_line=False,)
+            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0],  key_name="R", plot_line=False,)
         self.summary()
-        print(self.get_volumes())
         if self.should_plot and plotter_available:
             if not np.isnan(self.maxwell_p):
                 self.plotter.plot(
@@ -390,19 +388,17 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             if self.smallest_diff > diff:
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
                 self.smallest_diff = diff
+                self.smallest_i    = i
             else:
                 i_growth += 1
             if self.verbose:
                 print(f"[i:{i:3}] p: {p_c:5.4} | diff: {diff:2.3f}")
 
     def go_smart(self):
-        # step_t+1 = step_t - ita * grad f(step)
-
         diff_prev = 100500
         diff      = 100500
 
         p_c = self._p_maximum[1] # initial value
-        #p_c = random.uniform(self._p_minimum[1], self._p_maximum[1],)  # initial_value
         self.p_c_prev = p_c
 
         eta = 1.0
@@ -443,11 +439,11 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
-        self.maxwell_p = p_c
-        self._p_left = np.array((Vl, p_c))
-        self._p_center = np.array((Vc, p_c))
-        self._p_right= np.array((Vr, p_c))
-        self.left_part_final = left_part
+        self.maxwell_p        = p_c
+        self._p_left          = np.array((Vl, p_c))
+        self._p_center        = np.array((Vc, p_c))
+        self._p_right         = np.array((Vr, p_c))
+        self.left_part_final  = left_part
         self.right_part_final = right_part
 
 
