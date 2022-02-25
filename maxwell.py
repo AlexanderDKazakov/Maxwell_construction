@@ -278,7 +278,8 @@ class Maxwell:
 
     def processing_data(self, _xy: np.array):
         #
-        self.maxwell_p   = np.nan
+        self.maxwell_p        = np.nan
+        self.smallest_diff    = 100500
         self.left_part_final  = 0
         self.right_part_final = 0
         #
@@ -348,7 +349,6 @@ Taken (minimal available):
 
         print("Working...")
         self.smallest_p    = 100500
-        self.smallest_diff = 100500
         self.smallest_i    = 100500
 
         if self.number_of_points != -1: self.go_brute()
@@ -490,7 +490,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         print(f"""
 Summary:
     Maxwell pressure {self.maxwell_p}
-    Area difference {self.smallest_diff} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
+    Area difference {np.nan if np.isnan(self.maxwell_p) else self.smallest_diff} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
     Area[L] {self.left_part_final} | [R] {self.right_part_final}
 """)
 
