@@ -402,7 +402,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         p_c = self._p_maximum[1] # initial value
         self.p_c_prev = p_c
 
-        eta = 0.001
+        eta = abs(self._p_maximum[0] - self._p_minimum[0]) / 10
         grad_f = 0.1 #(self.p_c_prev-p_c)/(diff_prev - diff)
         grad_f_priv = grad_f
         i = 0
