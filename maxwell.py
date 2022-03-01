@@ -407,7 +407,6 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         grad_f_priv = grad_f
         i = 0
         while True:
-            print(p_c)
             i += 1
             #print(f"[i:{i:3}]: p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:+2.3e} | diff: {diff:2.3f}")
             if i >= self.iteration_limit: break
