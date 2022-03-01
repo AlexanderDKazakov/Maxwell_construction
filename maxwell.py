@@ -90,9 +90,9 @@ class Maxwell:
             # plot provided data
             self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name="provided data")
 
-        maxwell_curve_xy = self.get_maxwell_curve()
-        if self.should_plot and plotter_available:
-            self.plotter.plot(x=maxwell_curve_xy[:,0], y=maxwell_curve_xy[:,1], key_name="maxwell curve")
+        #maxwell_curve_xy = self.get_maxwell_curve()
+        #if self.should_plot and plotter_available:
+        #    self.plotter.plot(x=maxwell_curve_xy[:,0], y=maxwell_curve_xy[:,1], key_name="maxwell curve")
 
 
     @staticmethod
@@ -304,7 +304,7 @@ class Maxwell:
             i=0
             for mini in minimum: print(f"Minimum[{i}]: {mini}"); i+=1
             # if found more than 1 maximum -> take the smallest
-            self._p_maximum = maximum[maximum[:,0].argmin()]
+            self._p_maximum = maximum[maximum[:,0].argmax()]
             # if found more than 1 minimum -> take the smallest
             self._p_minimum = minimum[minimum[:,0].argmin()]
             print(f"""
@@ -349,7 +349,6 @@ Taken (minimal available):
                 self.Vc_Vr_defined.append(inter)
 
         print("Working...")
-
         if self.number_of_points != -1: self.go_brute()
         else:                           self.go_smart()
 
@@ -363,9 +362,11 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             self.right_part_final = 0
 
         if self.should_plot and plotter_available:
-            self.plotter.plot(y=self._p_left[1],   x=self._p_left[0],   key_name="L", plot_line=False,)
-            self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
-            self.plotter.plot(y=self._p_right[1],  x=self._p_right[0],  key_name="R", plot_line=False,)
+            try:
+                self.plotter.plot(y=self._p_left[1],   x=self._p_left[0],   key_name="L", plot_line=False,)
+                self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
+                self.plotter.plot(y=self._p_right[1],  x=self._p_right[0],  key_name="R", plot_line=False,)
+            except: pass
         self.summary()
         if self.should_plot and plotter_available:
             if not np.isnan(self.maxwell_p):
@@ -401,11 +402,12 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         p_c = self._p_maximum[1] # initial value
         self.p_c_prev = p_c
 
-        eta = 1.0
+        eta = 0.001
         grad_f = 0.1 #(self.p_c_prev-p_c)/(diff_prev - diff)
         grad_f_priv = grad_f
         i = 0
         while True:
+            print(p_c)
             i += 1
             #print(f"[i:{i:3}]: p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:+2.3e} | diff: {diff:2.3f}")
             if i >= self.iteration_limit: break
@@ -435,6 +437,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             self.p_c_prev = p_c
             diff_prev     = diff
             eta = diff*1/abs(grad_f - grad_f_priv)
+            if eta > 1.: eta = 1.0
             print(f"[i:{i:3}] p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:2.3e} | diff: {diff:2.3e}")
 
 
