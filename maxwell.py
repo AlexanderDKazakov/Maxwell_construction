@@ -23,6 +23,7 @@ except Exception:
 
 @dataclass
 class Maxwell:
+    debug              : bool                             = False
     __version__        : str                              = "0.3.1 [135]"
     internal_name      : str                              = "[Maxwell Construction]"
     verbose            : bool                             = False
@@ -76,7 +77,7 @@ class Maxwell:
         # from low to high with respect to V
         self._xy = self._xy[self._xy[:,0].argsort()]
 
-        if self.verbose:
+        if self.debug:
             print(f"Loaded:")
             print(f"        x {self._x.size}")
             print(f"        y {self._y.size}")
@@ -209,7 +210,7 @@ class Maxwell:
                 full = False
         # preparing output
         xy = np.column_stack((x,y))
-        if self.verbose:
+        if self.debug:
             print(f"size: {xy.shape}")
 
         # fitting with running mean
@@ -219,7 +220,7 @@ class Maxwell:
             xy_add = self.fit(p1, last_p_left, key_name=key_name)
             # put in front of x
             xy = np.insert(xy, 0, xy_add, axis=0)
-            if self.verbose:
+            if self.debug:
                 print(f"size: {xy.shape}")
 
             # right
@@ -227,10 +228,11 @@ class Maxwell:
             xy_add = self.fit(first_p_right, p2, key_name=key_name)
             # put at the end of x
             xy = np.insert(xy, -1, xy_add, axis=0)
-            if self.verbose:
+            if self.debug:
                 print(f"size: {xy.shape}")
 
-        #self.plotter.plot(x=xy[:,0], y=xy[:,1], key_name=key_name,)
+        if self.should_plot and plotter_available:
+            self.plotter.plot(x=xy[:,0], y=xy[:,1], key_name=key_name,)
         return xy
 
     # Provided user input for *x* and *y* or *filename*
@@ -290,7 +292,7 @@ class Maxwell:
         self._p_maximum = maximum = Maxwell.find_extrems(_xy, "max")
         self._p_minimum = minimum = Maxwell.find_extrems(_xy, "min")
 
-        if self.verbose:
+        if self.debug:
             print(f"Maximum: {maximum}")
             print(f"Minimum: {minimum}")
 
@@ -303,9 +305,9 @@ class Maxwell:
             # min
             i=0
             for mini in minimum: print(f"Minimum[{i}]: {mini}"); i+=1
-            # if found more than 1 maximum -> take the smallest
-            self._p_maximum = maximum[maximum[:,0].argmax()]
-            # if found more than 1 minimum -> take the smallest
+            # if found more than 1 maximum -> take the highest over pressures
+            self._p_maximum = maximum[maximum[:,1].argmax()]
+            # if found more than 1 minimum -> take the smallest over volumes
             self._p_minimum = minimum[minimum[:,0].argmin()]
             print(f"""
 Taken (minimal available):
