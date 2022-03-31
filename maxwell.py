@@ -15,7 +15,7 @@ import time
 import itertools
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
-DEBUG = True
+DEBUG = False
 
 try:
     from vplotter import Plotter
@@ -98,10 +98,10 @@ class Maxwell:
             _x = np.linspace(self._xy[:,0][0], self._xy[:,0][-1], len(self._xy[:,0])*self.number_inter_points)
             _y = spl(_x)
             self._original_data = np.copy(self._xy)
-            self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
+            # self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
             self._xy = np.column_stack((_x, _y))
-            self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"interpolated",)
-
+            # self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"interpolated",)
+        
         if self.smoothness_level:
             #self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
             if self.verbose: print(f"Smoothing[{self.smoothness_level}]...")
@@ -352,8 +352,8 @@ class Maxwell:
                 if self.verbose: print(f"Minimum[{idx}]: {mini}")
             # if found more than 1 maximum -> take the highest over pressures
             self._p_maximum = maximum[maximum[:,1].argmax()]
+            # if found more than 1 minimum -> take the smallest over volumes
             #self._p_maximum = maximum[maximum[:,0].argmin()]
-            ## if found more than 1 minimum -> take the smallest over volumes
             # if found more than 1 minimum -> take the smallest over pressures
             self._p_minimum = minimum[minimum[:,1].argmin()]
             print(f"""
@@ -558,19 +558,19 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                     Vc = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="C", plot_line=False, animation=True, x=Vc,)
                     #time.sleep(0.01)
-                except: Vc = np.nan
+                except: pass
             if part == "L":
                 try:
                     Vl = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="L", plot_line=False, animation=True, x=Vl,)
                     #time.sleep(0.01)
-                except: Vl = np.nan
+                except: pass
             if part == "R":
                 try:
                     Vr = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="R", plot_line=False, animation=True, x=Vr,)
                     #time.sleep(0.01)
-                except: Vr = np.nan
+                except: pass
         return Vl, Vc, Vr
 
     def get_parts(self, p_c, Vl, Vc, Vr):
@@ -698,12 +698,12 @@ if __name__=="__main__":
     parser.add_argument('--interpolate', dest='interpolate', action='store_true',  help="interpolate the input data")
     parser.add_argument('--number_inter_points',
                            action='store', type=int, required=False,
-                           help="Number of point to use when interpolation happens with spline. Default: '100'."
+                           help="Number of point to use when interpolation happens with spline. Default: '1000'."
                            )
     parser.set_defaults(region_of_interest_volume="all")
     parser.set_defaults(region_of_interest_pressure="all")
     parser.set_defaults(number_of_points=-1)
-    parser.set_defaults(number_inter_points=100)
+    parser.set_defaults(number_inter_points=1000)
     parser.set_defaults(x_column=0)
     parser.set_defaults(y_column=1)
     parser.set_defaults(verbose=False)
