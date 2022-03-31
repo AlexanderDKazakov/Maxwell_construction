@@ -3,6 +3,7 @@ import argparse
 import sys
 import numpy as np
 from typing import Tuple, Union, List
+from scipy.ndimage     import uniform_filter1d
 from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
 from dataclasses       import dataclass, field
@@ -14,7 +15,7 @@ import time
 import itertools
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 
-DEBUG = False
+DEBUG = True
 
 try:
     from vplotter import Plotter
@@ -25,54 +26,57 @@ except Exception:
 
 @dataclass
 class Maxwell:
-    debug              : bool                             = False
-    __version__        : str                              = "0.4.0 [175]"
-    internal_name      : str                              = "[Maxwell Construction]"
-    verbose            : bool                             = False
-    filename           : str                              = None
-    region_of_interest : Union[str, Tuple[float, float]]  = "all"
-    x                  : List[float]                      = None
-    y                  : List[float]                      = None
-    number_of_points   : int                              = -1
-    growth_limit     : int                              = 1000
-    iteration_limit    : int                              = 100
-    tolerance          : float                            = 0.5
-    return_best        : bool                             = False
-    use_cols           : Tuple[int, int]                  = (0, 1)
+    debug                       : bool                             = False
+    __version__                 : str                              = "0.4.0 [175]"
+    internal_name               : str                              = "[Maxwell Construction]"
+    verbose                     : bool                             = False
+    filename                    : str                              = None
+    region_of_interest_volume   : Union[str, Tuple[float, float]]  = "all"
+    region_of_interest_pressure : Union[str, Tuple[float, float]]  = "all"
+    x                           : List[float]                      = None
+    y                           : List[float]                      = None
+    number_inter_points         : int                              = 100
+    number_of_points            : int                              = -1
+    growth_limit                : int                              = 100
+    iteration_limit             : int                              = 100
+    tolerance                   : float                            = 0.5
+    return_best                 : bool                             = False
+    use_cols                    : Tuple[int, int]                  = (0, 1)
 
-    prelim_iterpolate : bool                             = False
-    should_plot        : bool                             = False
-    _can_calculate     : bool                             = True
-    _internal_error    : int                              = 0
-    _notified          : bool                             = False
-    #self.xdata4fit = None
-    _x                 : np.array                         = None
-    _y                 : np.array                         = None
-    _interpolations    : List                             = field(default_factory=list)
-    _rev_interpolations: List                             = field(default_factory=list)
-    #self.ydata4fit = None
-    _p_left_bound      : float                            = None
-    _p_left            : float                            = None
-    _p_minimum         : float                            = None
-    _p_maximum         : float                            = None
-    _p_right           : float                            = None
-    _p_right_bound     : float                            = None
-    # -1 hack
-    # 0 -- everything is okay # 1 -- can't | monotonic decay # 2 -- can't | right tail is not long enough ...
+    error_pressure              : float                            = 0.0
+    smoothness_level            : int                              = 0
+    prelim_interpolate          : bool                             = False
+    should_plot                 : bool                             = False
+    _can_calculate              : bool                             = True
+    _internal_error             : int                              = 0
+    _notified                   : bool                             = False
 
-    _plotter           : Plotter                          = None
-    _plottedL          : bool                             = False
-    _plottedC          : bool                             = False
-    _plottedR          : bool                             = False
-    _plottedA          : bool                             = False
+    _x                          : np.array                         = None
+    _y                          : np.array                         = None
+    _interpolations             : List                             = field(default_factory=list)
+    _rev_interpolations         : List                             = field(default_factory=list)
+
+    _p_left_bound               : float                            = None
+    _p_left                     : float                            = None
+    _p_left_error               : float                            = None
+    _p_minimum                  : float                            = None
+    _p_maximum                  : float                            = None
+    _p_right                    : float                            = None
+    _p_right_error              : float                            = None
+    _p_right_bound              : float                            = None
+
+    _plotter                    : Plotter                          = None
+    _plottedL                   : bool                             = False
+    _plottedC                   : bool                             = False
+    _plottedR                   : bool                             = False
+    _plottedA                   : bool                             = False
 
     def __post_init__(self):
-        # Should be last
         if self.should_plot and plotter_available:
             if self.verbose: print(f"{self.internal_name} Plotting provided data..")
             self.plotter = Plotter(yname="Pressure", xname="Volumes", xlog=True,
-                                   ymax= 20, # TODO: either argument or none!
-                                   ymin=-5, # TODO: either argument or none!
+                                   ymax=140, # TODO: either argument or none!
+                                   ymin=-45, # TODO: either argument or none!
                                    )
 
         self.load(x=self.x, y=self.y, filename=self.filename)
@@ -87,15 +91,25 @@ class Maxwell:
             print(f"        y {self._y.size}")
             print(f"       xy {self._xy.size}")
 
-        if self.prelim_iterpolate:
+        if self.prelim_interpolate:
             if self.verbose:
                 print(f"Preliminary interpolation of provided data...")
             spl = UnivariateSpline(self._xy[:,0], self._xy[:,1])
-            _x = np.linspace(self._xy[:,0][0], self._xy[:,0][-1], len(self._xy[:,0])*1000)
+            _x = np.linspace(self._xy[:,0][0], self._xy[:,0][-1], len(self._xy[:,0])*self.number_inter_points)
             _y = spl(_x)
             self._original_data = np.copy(self._xy)
+            self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
             self._xy = np.column_stack((_x, _y))
+            self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"interpolated",)
 
+        if self.smoothness_level:
+            #self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
+            if self.verbose: print(f"Smoothing[{self.smoothness_level}]...")
+            # mean(x, N)
+            for i in range(self.smoothness_level):
+                self._xy[:,1] = Maxwell.runningMeanFast_same(self._xy[:,1], N=7)
+                #if self.should_plot and plotter_available and self.debug:
+                #self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"{i+1}",)
 
         self.processing_data(_xy=self._xy)
 
@@ -123,6 +137,18 @@ class Maxwell:
         good_values = ~np.isnan(y)
         _x, _y = x[good_values], y[good_values]
         return _x, _y
+
+    # good with N = 2
+    @staticmethod
+    def running_mean_convolve(x, N):         return np.convolve(x, np.ones(N) / float(N), 'valid') # full, same
+    @staticmethod
+    def runningMeanFast(x, N):               return np.convolve(x, np.ones((N,))/N, "same")[(N-1):]
+    @staticmethod
+    def runningMeanFast_same(x, N):          return np.convolve(x, np.ones((N,))/N)[(N-1):]
+    @staticmethod
+    def running_mean_cumsum(x, N):           cumsum = np.cumsum(np.insert(x, 0, 0)); return (cumsum[N:] - cumsum[:-N]) / float(N)
+    @staticmethod
+    def running_mean_uniform_filter1d(x, N): return uniform_filter1d(x, N, mode='constant', origin=-(N//2))[:-(N-1)]
 
     @staticmethod
     def running_mean(x, y, N_out=101, sigma=1):
@@ -204,8 +230,9 @@ class Maxwell:
             rev_inter = self.get_inter(p1=p1, p2=p2, inversed=True)
             self._interpolations.append((key_name,inter))
             self._rev_interpolations.append((key_name,rev_inter))
-        except ValueError:
+        except ValueError as e:
             # not possible to interpolate this region
+            print(f"Not possible to interpolate this region [{p1}] and [{p2}]: {e}")
             return
         x = np.linspace(p1[0], p2[0], 10000)
 
@@ -271,8 +298,13 @@ class Maxwell:
             sys.exit(1)
 
         # if provided the *region_of_interest* Union[str, Tuple[float, float]]
-        if self.region_of_interest != "all":
-            values_ids = (self._x > self.region_of_interest[0]) & (self._x < self.region_of_interest[1])
+        if self.region_of_interest_volume != "all":
+            values_ids = (self._x > self.region_of_interest_volume[0]) & (self._x < self.region_of_interest_volume[1])
+            self._x = self._x[values_ids]
+            self._y = self._y[values_ids]
+
+        if self.region_of_interest_pressure != "all":
+            values_ids = (self._y > self.region_of_interest_pressure[0]) & (self._y < self.region_of_interest_pressure[1])
             self._x = self._x[values_ids]
             self._y = self._y[values_ids]
 
@@ -321,8 +353,9 @@ class Maxwell:
             # if found more than 1 maximum -> take the highest over pressures
             self._p_maximum = maximum[maximum[:,1].argmax()]
             #self._p_maximum = maximum[maximum[:,0].argmin()]
-            # if found more than 1 minimum -> take the smallest over volumes
-            self._p_minimum = minimum[minimum[:,0].argmin()]
+            ## if found more than 1 minimum -> take the smallest over volumes
+            # if found more than 1 minimum -> take the smallest over pressures
+            self._p_minimum = minimum[minimum[:,1].argmin()]
             print(f"""
 Taken (minimal available):
     [maximum]: {self._p_maximum}
@@ -388,13 +421,29 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                 self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
                 self.plotter.plot(y=self._p_right[1],  x=self._p_right[0],  key_name="R", plot_line=False,)
                 self.plotter.plot(x=_xy[:,0], y=_xy[:,1], key_name="provided data")
-                if self.prelim_iterpolate:
+                if self.prelim_interpolate:
                     self.plotter.plot(x=self._original_data[:,0], y=self._original_data[:,1], key_name="original data")
 
             except:
                 # problem can be with *_p_left*, *_p_center* and *_p_right*
                 # thus the latest plot might be not plotted
                 self.plotter.plot(x=_xy[:,0], y=_xy[:,1], key_name="provided data")
+
+        # error pressure
+        if not np.isnan(self.maxwell_p) and self.error_pressure:
+            # attempt to find errors for L, and R --> min and max should be the same
+            # error_pressure provided in percentage -> 0..100
+            error_p = self.maxwell_p * (self.error_pressure / 100) #
+            Vlc,  _, Vrc  = self.get_Vs(p_c=self.maxwell_p)
+            #
+            p_maxwell_plus_error  = self.maxwell_p + error_p
+            p_maxwell_minus_error = self.maxwell_p - error_p
+            print(f"Maxwell pressure error [{self.error_pressure}%], corresponding pressures: [{p_maxwell_plus_error}] and [{p_maxwell_minus_error}]")
+            Vlpe, _, Vrpe = self.get_Vs(p_c=p_maxwell_plus_error)
+            Vlme, _, Vrme = self.get_Vs(p_c=p_maxwell_minus_error)
+            # error
+            self._p_left_error  = np.array((abs(Vlc-Vlme), abs(Vlc+Vlpe)))
+            self._p_right_error = np.array((abs(Vrc-Vlme), abs(Vrc+Vlpe)))
 
         self.summary()
         if self.should_plot and plotter_available:
@@ -428,10 +477,11 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                 self.bookkeeping(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr, left_part=left_part, right_part=right_part)
                 self.smallest_diff = diff
                 self.smallest_i    = i
+                if i_growth > 0: i_growth -= 1 # decrease the counter if next step is lower
             else:
                 i_growth += 1
             if self.verbose:
-                print(f"[i:{i:3}] p: {p_c:5.4} | diff: {diff:2.3e}")
+                print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | diff: {diff:2.3e}")
 
     def go_smart(self):
         i_growth = 0
@@ -465,13 +515,13 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             Vl, Vc, Vr = self.get_Vs(p_c=p_c)
             if np.isnan(Vl) or np.isnan(Vc) or np.isnan(Vr):
                 if self.verbose:
-                    print(f"[i:{i:3}] p: {p_c:5.4} | one of [Vl, Vc, Vr] is not defined.")
+                    print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | one of [Vl, Vc, Vr] is not defined.")
                 continue
 
             left_part, right_part = self.get_parts(p_c=p_c, Vl=Vl, Vc=Vc, Vr=Vr)
             if left_part is None or right_part is None:
                 if self.verbose:
-                    print(f"[i:{i:3}] p: {p_c:5.4} | on of [left_area, right_area] is not defined.")
+                    print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | on of [left_area, right_area] is not defined.")
                 continue
 
             diff = abs(right_part - left_part)
@@ -487,7 +537,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             diff_prev     = diff
             eta = diff*1/abs(grad_f - grad_f_priv)
             if eta > 1.: eta = 1.0
-            print(f"[i:{i:3}] p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:2.3e} | diff: {diff:2.3e}")
+            print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:2.3e} | diff: {diff:2.3e}")
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
@@ -499,7 +549,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         self.right_part_final = right_part
 
 
-    def get_Vs(self, p_c):
+    def get_Vs(self, p_c) -> Tuple[float, float, float]:
         Vl, Vc, Vr = np.nan, np.nan, np.nan
         for idx, (part, inter) in enumerate(self._rev_interpolations):
             #print(idx, part, inter)
@@ -508,19 +558,19 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                     Vc = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="C", plot_line=False, animation=True, x=Vc,)
                     #time.sleep(0.01)
-                except: pass
+                except: Vc = np.nan
             if part == "L":
                 try:
                     Vl = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="L", plot_line=False, animation=True, x=Vl,)
                     #time.sleep(0.01)
-                except: pass
+                except: Vl = np.nan
             if part == "R":
                 try:
                     Vr = inter(p_c)
                     #self.plotter.plot(y=p_c, key_name="R", plot_line=False, animation=True, x=Vr,)
                     #time.sleep(0.01)
-                except: pass
+                except: Vr = np.nan
         return Vl, Vc, Vr
 
     def get_parts(self, p_c, Vl, Vc, Vr):
@@ -555,10 +605,20 @@ Summary:
         Vright -- volume of cross right
         '''
         if not np.isnan(self.maxwell_p):
-            return (self._p_left[0], self._p_minimum[0], self._p_maximum[0], self._p_right[0])
+            if self.error_pressure:
+                return ((self._p_left[0], self._p_left_error),
+                        self._p_minimum[0],
+                        self._p_maximum[0],
+                        (self._p_right[0], self._p_right_error),
+                        )
+            else:
+                return (self._p_left[0], self._p_minimum[0], self._p_maximum[0], self._p_right[0])
         else:
             # not defined
             return (np.nan, np.nan, np.nan, np.nan)
+
+    def get_maxwell_pressure(self):
+        return self.maxwell_p
 
     def get_tolerance(self):
         if self.smallest_diff != 100500:
@@ -591,9 +651,17 @@ if __name__=="__main__":
                            action='store', type=str, required=True,
                            help="Input file path",
                            )
-    parser.add_argument('-r',  '--region_of_interest',
+    parser.add_argument('-e',  '--error_pressure',
+                           action='store', type=float, required=False,
+                           help="A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10% of uncertainty",
+                           )
+    parser.add_argument('-a',  '--region_of_interest_volume',
                            action='store', type=str, required=False,
                            help="Region of interest in terms of volume. Ex. 0.2:10. Default: 'all'",
+                           )
+    parser.add_argument('-o',  '--region_of_interest_pressure',
+                           action='store', type=str, required=False,
+                           help="Region of interest in terms of pressure. Ex. 20:-5. Default: 'all'",
                            )
     parser.add_argument('-n',  '--number_of_points',
                            action='store', type=int, required=False,
@@ -603,6 +671,10 @@ if __name__=="__main__":
     parser.add_argument('-g',  '--growth_limit',
                            action='store', type=int, required=False,
                            help="Growth delta area limit. Default: '100'",
+                           )
+    parser.add_argument('-s',  '--smoothness_level',
+                           action='store', type=int, required=False,
+                           help="Smoothness level. Default: '0'\n" "An increase led to making the data smoother",
                            )
     parser.add_argument('-t',  '--tolerance',
                            action='store', type=float, required=False,
@@ -624,8 +696,14 @@ if __name__=="__main__":
     parser.add_argument('--plot',        dest='plot',        action='store_true',  help="plotting (required vplotter package)")
     parser.add_argument('--return_best', dest='return_best', action='store_true',  help="return the best pressure if not reached required tolerance")
     parser.add_argument('--interpolate', dest='interpolate', action='store_true',  help="interpolate the input data")
-    parser.set_defaults(region_of_interest="all")
+    parser.add_argument('--number_inter_points',
+                           action='store', type=int, required=False,
+                           help="Number of point to use when interpolation happens with spline. Default: '100'."
+                           )
+    parser.set_defaults(region_of_interest_volume="all")
+    parser.set_defaults(region_of_interest_pressure="all")
     parser.set_defaults(number_of_points=-1)
+    parser.set_defaults(number_inter_points=100)
     parser.set_defaults(x_column=0)
     parser.set_defaults(y_column=1)
     parser.set_defaults(verbose=False)
@@ -635,29 +713,44 @@ if __name__=="__main__":
     parser.set_defaults(tolerance=0.5)
     parser.set_defaults(iteration_limit=100)
     parser.set_defaults(growth_limit=100)
+    parser.set_defaults(smoothness_level=0)
+    parser.set_defaults(error_pressure=0)
     args = parser.parse_args()
 
-    if args.region_of_interest != "all":
-        region_of_interest = args.region_of_interest.split(":")
-        region_of_interest = (
-            float(region_of_interest[0]) if region_of_interest[0] else -np.inf,
-            float(region_of_interest[1]) if region_of_interest[1] else np.inf
+    if args.region_of_interest_volume != "all":
+        region_of_interest_volume = args.region_of_interest_volume.split(":")
+        region_of_interest_volume = (
+            float(region_of_interest_volume[0]) if region_of_interest_volume[0] else -np.inf,
+            float(region_of_interest_volume[1]) if region_of_interest_volume[1] else np.inf
         )
     else:
-        region_of_interest = args.region_of_interest
+        region_of_interest_volume = args.region_of_interest_volume
+
+    if args.region_of_interest_pressure != "all":
+        region_of_interest_pressure = args.region_of_interest_pressure.split(":")
+        region_of_interest_pressure = (
+            float(region_of_interest_pressure[0]) if region_of_interest_pressure[0] else -np.inf,
+            float(region_of_interest_pressure[1]) if region_of_interest_pressure[1] else np.inf
+        )
+    else:
+        region_of_interest_pressure = args.region_of_interest_pressure
 
     #print(args)
     m = Maxwell(
-        debug=DEBUG,
-        filename=args.input,
-        region_of_interest=region_of_interest,
-        number_of_points=args.number_of_points,
-        should_plot=args.plot,
-        tolerance= args.tolerance,
-        iteration_limit=args.iteration_limit,
-        growth_limit=args.growth_limit,
-        verbose=args.verbose,
-        return_best=args.return_best,
-        prelim_iterpolate=args.interpolate,
+        debug                       = DEBUG,
+        filename                    = args.input,
+        region_of_interest_volume   = region_of_interest_volume,
+        region_of_interest_pressure = region_of_interest_pressure,
+        number_of_points            = args.number_of_points,
+        number_inter_points         = args.number_inter_points,
+        should_plot                 = args.plot,
+        tolerance                   = args.tolerance,
+        iteration_limit             = args.iteration_limit,
+        growth_limit                = args.growth_limit,
+        verbose                     = args.verbose,
+        return_best                 = args.return_best,
+        prelim_interpolate          = args.interpolate,
+        smoothness_level            = args.smoothness_level,
+        error_pressure              = args.error_pressure,
     )
     input("Press any key to continue...")
