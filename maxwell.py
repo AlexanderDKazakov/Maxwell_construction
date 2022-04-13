@@ -35,13 +35,14 @@ class Maxwell:
     region_of_interest_pressure : Union[str, Tuple[float, float]]  = "all"
     x                           : List[float]                      = None
     y                           : List[float]                      = None
-    number_inter_points         : int                              = 100
+    y_err                       : List[float]                      = None
+    number_inter_points         : int                              = 1000
     number_of_points            : int                              = -1
     growth_limit                : int                              = 100
     iteration_limit             : int                              = 100
     tolerance                   : float                            = 0.5
     return_best                 : bool                             = False
-    use_cols                    : Tuple[int, int]                  = (0, 1)
+    use_cols                    : Tuple[int, int]                  = (0, 1, 2)
 
     error_pressure              : float                            = 0.0
     smoothness_level            : int                              = 0
@@ -53,6 +54,7 @@ class Maxwell:
 
     _x                          : np.array                         = None
     _y                          : np.array                         = None
+    _y_err                      : np.array                         = None
     _interpolations             : List                             = field(default_factory=list)
     _rev_interpolations         : List                             = field(default_factory=list)
 
@@ -79,9 +81,12 @@ class Maxwell:
                                    ymin=-45, # TODO: either argument or none!
                                    )
 
-        self.load(x=self.x, y=self.y, filename=self.filename)
+        self.load(x=self.x, y=self.y, y_err=self.y_err, filename=self.filename)
 
-        self._xy = np.column_stack((self._x, self._y))
+        if self._y_err is None:
+            self._xy = np.column_stack((self._x, self._y))
+        else:
+            self._xy = np.column_stack((self._x, self._y, self._y_err))
         # from low to high with respect to V
         self._xy = self._xy[self._xy[:,0].argsort()]
 
@@ -94,20 +99,20 @@ class Maxwell:
         if self.prelim_interpolate:
             if self.verbose:
                 print(f"Preliminary interpolation of provided data...")
-            spl = UnivariateSpline(self._xy[:,0], self._xy[:,1])
+            spl = UnivariateSpline(x=self._xy[:,0], y=self._xy[:,1])
             _x = np.linspace(self._xy[:,0][0], self._xy[:,0][-1], len(self._xy[:,0])*self.number_inter_points)
             _y = spl(_x)
             self._original_data = np.copy(self._xy)
             # self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
             self._xy = np.column_stack((_x, _y))
             # self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"interpolated",)
-        
+
         if self.smoothness_level:
             #self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"orig",)
             if self.verbose: print(f"Smoothing[{self.smoothness_level}]...")
             # mean(x, N)
             for i in range(self.smoothness_level):
-                self._xy[:,1] = Maxwell.runningMeanFast_same(self._xy[:,1], N=7)
+                self._xy[:,1] = Maxwell.runningMeanFast_same(self._xy[:,1], N=3)
                 #if self.should_plot and plotter_available and self.debug:
                 #self.plotter.plot(x=self._xy[:,0], y=self._xy[:,1], key_name=f"{i+1}",)
 
@@ -273,8 +278,9 @@ class Maxwell:
     # Provided user input for *x* and *y* or *filename*
     # The function would initialized internal representation of array --> self._x and self._y
     def load(self,
-             x: List[float] = None,
-             y: List[float] = None,
+             x:     List[float] = None,
+             y:     List[float] = None,
+             y_err: List[float] = None,
              filename: str  = None,
              ):
         # reading all data
@@ -289,7 +295,13 @@ class Maxwell:
         elif filename is not None:
             if self.verbose: print(f"{self.internal_name} File opening... [{self.filename}]")
             try:
-                self._x, self._y = np.loadtxt(self.filename, unpack=True, usecols=self.use_cols);
+                self._x, self._y, self._y_err = np.loadtxt(self.filename, unpack=True, usecols=self.use_cols);
+            except IndexError:
+                try:
+                    self._x, self._y = np.loadtxt(self.filename, unpack=True, usecols=self.use_cols[:-1]);
+                except Exception as e:
+                    print(f"Error: {e}");
+                    sys.exit(1)
             except Exception as e:
                 print(f"Error: {e}");
                 sys.exit(1)
@@ -329,8 +341,16 @@ class Maxwell:
         self.left_part_final  = 0
         self.right_part_final = 0
         #
-        self._p_left_bound  = _xy[0]
-        self._p_right_bound = _xy[-1]
+        if _xy.shape[1] == 2:
+            self._p_left_bound  = _xy[0]
+            self._p_right_bound = _xy[-1]
+        elif _xy.shape[1] == 3:
+            self._p_left_bound  = _xy[0][[0,1]]
+            self._p_right_bound = _xy[-1][[0,1]]
+        else:
+            raise Exception("Internal error: _xy has {_xy.shape} shape.")
+            sys.exit(1)
+
         # find extremes
         self._p_maximum = maximum = Maxwell.find_extrems(_xy, "max")
         self._p_minimum = minimum = Maxwell.find_extrems(_xy, "min")
@@ -355,7 +375,7 @@ class Maxwell:
             # if found more than 1 minimum -> take the smallest over volumes
             #self._p_maximum = maximum[maximum[:,0].argmin()]
             # if found more than 1 minimum -> take the smallest over pressures
-            self._p_minimum = minimum[minimum[:,1].argmin()]
+            self._p_minimum = minimum[minimum[:,0].argmin()]
             print(f"""
 Taken (minimal available):
     [maximum]: {self._p_maximum}
@@ -417,12 +437,27 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                 self.plotter.plot(x=self._p_minimum[0],     y=self._p_minimum[1],     key_name="min",    plot_line=False,)
                 self.plotter.plot(x=self._p_maximum[0],     y=self._p_maximum[1],     key_name="max",    plot_line=False,)
                 self.plotter.plot(x=self._p_right_bound[0], y=self._p_right_bound[1], key_name="Rbound", plot_line=False,)
-                self.plotter.plot(y=self._p_left[1],   x=self._p_left[0],   key_name="L", plot_line=False,)
-                self.plotter.plot(y=self._p_center[1], x=self._p_center[0], key_name="C", plot_line=False,)
-                self.plotter.plot(y=self._p_right[1],  x=self._p_right[0],  key_name="R", plot_line=False,)
-                self.plotter.plot(x=_xy[:,0], y=_xy[:,1], key_name="provided data")
+                #
+                self.plotter.plot(x=self._p_left[0],        y=self._p_left[1],        key_name="L",      plot_line=False,)
+                self.plotter.plot(x=self._p_center[0],      y=self._p_center[1],      key_name="C",      plot_line=False,)
+                self.plotter.plot(x=self._p_right[0],       y=self._p_right[1],       key_name="R",      plot_line=False,)
+
+                if _xy.shape[1] == 2:
+                    self.plotter.plot(x=_xy[:,0], y=_xy[:,1], key_name="provided data")
+                elif _xy.shape[1] == 3:
+                    self.plotter.plot(x=_xy[:,0], y=_xy[:,[1,2]], key_name="provided data", error_style="bar")
+                else:
+                    raise Exception("Internal error: _xy has {_xy.shape} shape.")
+                    sys.exit(1)
+
                 if self.prelim_interpolate:
-                    self.plotter.plot(x=self._original_data[:,0], y=self._original_data[:,1], key_name="original data")
+                    if self._original_data.shape[1] == 2:
+                        self.plotter.plot(x=self._original_data[:,0], y=self._original_data[:,1], key_name="original data")
+                    elif self._original_data.shape[1] == 3:
+                        self.plotter.plot(x=self._original_data[:,0], y=self._original_data[:,[1,2]], key_name="original data", error_style="bar")
+                    else:
+                        raise Exception("Internal error: _original_data has {self._original_data.shape} shape.")
+                        sys.exit(1)
 
             except:
                 # problem can be with *_p_left*, *_p_center* and *_p_right*
@@ -433,7 +468,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
         if not np.isnan(self.maxwell_p) and self.error_pressure:
             # attempt to find errors for L, and R --> min and max should be the same
             # error_pressure provided in percentage -> 0..100
-            error_p = self.maxwell_p * (self.error_pressure / 100) #
+            error_p = np.abs(self.maxwell_p) * (self.error_pressure / 100) #
             Vlc,  _, Vrc  = self.get_Vs(p_c=self.maxwell_p)
             #
             p_maxwell_plus_error  = self.maxwell_p + error_p
@@ -441,9 +476,13 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             print(f"Maxwell pressure error [{self.error_pressure}%], corresponding pressures: [{p_maxwell_plus_error}] and [{p_maxwell_minus_error}]")
             Vlpe, _, Vrpe = self.get_Vs(p_c=p_maxwell_plus_error)
             Vlme, _, Vrme = self.get_Vs(p_c=p_maxwell_minus_error)
+            print(f"Vl+err: {Vlpe} | Vr+err: {Vrpe}")
+            print(f"Vl-err: {Vlme} | Vr-err: {Vrme}")
             # error
-            self._p_left_error  = np.array((abs(Vlc-Vlme), abs(Vlc+Vlpe)))
-            self._p_right_error = np.array((abs(Vrc-Vlme), abs(Vrc+Vlpe)))
+            #self._p_left_error  = np.array((Vlme, Vlpe))
+            #self._p_right_error = np.array((Vrme, Vrpe))
+            self._p_left_error  = np.array((Vlpe, Vlme))
+            self._p_right_error = np.array((Vrpe, Vrme))
 
         self.summary()
         if self.should_plot and plotter_available:
@@ -628,17 +667,27 @@ Summary:
     def get_maxwell_curve(self):
         # introduce left_point and right_point in the data provided by user
         # substitute in between by maxwell_p
+        if self._xy.shape[1] == 3:
+            _p_left = np.insert(self._p_left, len(self._p_left), 0, axis=0) # add zero as errorbar
+            _p_right = np.insert(self._p_right, len(self._p_right), 0, axis=0) # add zero as errorbar
+        elif self._xy.shape[1] == 2:
+            _p_left = self._p_left
+            _p_right = self._p_right
+        else:
+            raise Exception("Internal error: _xy has {_xy.shape} shape.")
+            sys.exit(1)
+
         maxwell_curve = np.copy(self._xy)
         # if maxwell success
         if not np.isnan(self.maxwell_p):
             # adding the left point and right
-            maxwell_curve = np.insert(maxwell_curve, 0, self._p_left, axis=0)
-            maxwell_curve = np.insert(maxwell_curve, 0, self._p_right, axis=0)
+            maxwell_curve = np.insert(maxwell_curve, 0, _p_left, axis=0)
+            maxwell_curve = np.insert(maxwell_curve, 0, _p_right, axis=0)
 
             maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
             # substitute in between
             maxwell_curve[:,1][(
-                (maxwell_curve[:,0]>=self._p_left[0]) & (maxwell_curve[:,0] <= self._p_right[0])
+                (maxwell_curve[:,0]>=_p_left[0]) & (maxwell_curve[:,0] <= _p_right[0])
             )] = self.maxwell_p
             maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
         return maxwell_curve
