@@ -2,7 +2,7 @@
 import argparse
 import sys
 import numpy as np
-from typing import Tuple, Union, List
+from typing            import Tuple, Union, List
 from scipy.ndimage     import uniform_filter1d
 from scipy.interpolate import interp1d
 from scipy.interpolate import UnivariateSpline
@@ -27,7 +27,7 @@ except Exception:
 @dataclass
 class Maxwell:
     debug                       : bool                             = False
-    __version__                 : str                              = "0.4.0 [175]"
+    __version__                 : str                              = "0.4.1 [175]"
     internal_name               : str                              = "[Maxwell Construction]"
     verbose                     : bool                             = False
     filename                    : str                              = None
@@ -57,6 +57,8 @@ class Maxwell:
     _y_err                      : np.array                         = None
     _interpolations             : List                             = field(default_factory=list)
     _rev_interpolations         : List                             = field(default_factory=list)
+    _original_data              : np.array                         = None
+    _xy                         : np.array                         = None
 
     _p_left_bound               : float                            = None
     _p_left                     : float                            = None
@@ -237,7 +239,8 @@ class Maxwell:
             self._rev_interpolations.append((key_name,rev_inter))
         except ValueError as e:
             # not possible to interpolate this region
-            print(f"Not possible to interpolate this region [{p1}] and [{p2}]: {e}")
+            if self.verbose:
+                print(f"Not possible to interpolate this region [{p1}] and [{p2}]: {e}")
             return
         x = np.linspace(p1[0], p2[0], 10000)
 
@@ -314,11 +317,13 @@ class Maxwell:
             values_ids = (self._x > self.region_of_interest_volume[0]) & (self._x < self.region_of_interest_volume[1])
             self._x = self._x[values_ids]
             self._y = self._y[values_ids]
+            self._y_err = self._y_err[values_ids]
 
         if self.region_of_interest_pressure != "all":
             values_ids = (self._y > self.region_of_interest_pressure[0]) & (self._y < self.region_of_interest_pressure[1])
             self._x = self._x[values_ids]
             self._y = self._y[values_ids]
+            self._y_err = self._y_err[values_ids]
 
     @staticmethod
     def integrate(a, b, fs=["fun1", "fun2"]):
@@ -418,7 +423,7 @@ Taken (minimal available):
                 self.Vl_Vc_defined.append(inter)
                 self.Vc_Vr_defined.append(inter)
 
-        print("Working...")
+        print(f"{self.internal_name} Working...")
         if self.number_of_points != -1: self.go_brute()
         else:                           self.go_smart()
 
@@ -517,10 +522,13 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
                 self.smallest_diff = diff
                 self.smallest_i    = i
                 if i_growth > 0: i_growth -= 1 # decrease the counter if next step is lower
+            elif diff_prev > diff:  # if prev_diff bigger than new diff we have a chance to find smallest_diff
+                if i_growth > 0: i_growth -= 1
             else:
                 i_growth += 1
+            diff_prev = diff
             if self.verbose:
-                print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | diff: {diff:2.3e}")
+                print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | Δ: {diff:2.3e}")
 
     def go_smart(self):
         i_growth = 0
@@ -576,7 +584,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
             diff_prev     = diff
             eta = diff*1/abs(grad_f - grad_f_priv)
             if eta > 1.: eta = 1.0
-            print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | eta: {eta:5.3} | grad: {grad_f:2.3e} | diff: {diff:2.3e}")
+            print(f"[i:{i:3}|{i_growth}] p: {p_c:5.4} | η: {eta:5.3} | ∇: {grad_f:2.3e} | Δ: {diff:2.3e}")
 
 
     def bookkeeping(self, p_c, Vl, Vc, Vr, left_part, right_part):
@@ -629,7 +637,7 @@ Maxwell found at step [{self.smallest_i}] some pressure [{self.maxwell_p:5.4}], 
 
     def summary(self):
         print(f"""
-Summary:
+{self.internal_name} Summary:
     Maxwell pressure[{self.smallest_i}] {self.maxwell_p}
     Area difference {np.nan if np.isnan(self.maxwell_p) else self.smallest_diff} | tolerance/N points [{self.tolerance if self.number_of_points == -1 else self.number_of_points}]
     Area[L] {self.left_part_final} | [R] {self.right_part_final}
@@ -667,30 +675,49 @@ Summary:
     def get_maxwell_curve(self):
         # introduce left_point and right_point in the data provided by user
         # substitute in between by maxwell_p
-        if self._xy.shape[1] == 3:
-            _p_left = np.insert(self._p_left, len(self._p_left), 0, axis=0) # add zero as errorbar
-            _p_right = np.insert(self._p_right, len(self._p_right), 0, axis=0) # add zero as errorbar
-        elif self._xy.shape[1] == 2:
-            _p_left = self._p_left
-            _p_right = self._p_right
-        else:
-            raise Exception("Internal error: _xy has {_xy.shape} shape.")
-            sys.exit(1)
-
-        maxwell_curve = np.copy(self._xy)
         # if maxwell success
         if not np.isnan(self.maxwell_p):
+
+            # either we need use _xy or _original_data
+            if self.prelim_interpolate:
+                array = self._original_data
+            else:
+                array = self._xy
+
+            if array.shape[1] == 3:
+                _p_left  = np.insert(self._p_left,  len(self._p_left),  0, axis=0) # add zero as errorbar
+                _p_right = np.insert(self._p_right, len(self._p_right), 0, axis=0) # add zero as errorbar
+            elif array.shape[1] == 2:
+                _p_left  = self._p_left
+                _p_right = self._p_right
+            else:
+                raise Exception("Internal error: array has {array.shape} shape.")
+                sys.exit(1)
+
+            maxwell_curve = np.copy(array)
+
             # adding the left point and right
             maxwell_curve = np.insert(maxwell_curve, 0, _p_left, axis=0)
             maxwell_curve = np.insert(maxwell_curve, 0, _p_right, axis=0)
 
             maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
-            # substitute in between
+
+            # value substitute in between
             maxwell_curve[:,1][(
                 (maxwell_curve[:,0]>=_p_left[0]) & (maxwell_curve[:,0] <= _p_right[0])
             )] = self.maxwell_p
+
+            # error substitute in between
+            try:
+                maxwell_curve[:,2][(
+                (maxwell_curve[:,0]>=_p_left[0]) & (maxwell_curve[:,0] <= _p_right[0])
+            )] = 0.0
+            except IndexError:
+                pass
             maxwell_curve = maxwell_curve[maxwell_curve[:,0].argsort()]
-        return maxwell_curve
+            return maxwell_curve
+        else:
+            return None
 
 
 if __name__=="__main__":
@@ -702,7 +729,7 @@ if __name__=="__main__":
                            )
     parser.add_argument('-e',  '--error_pressure',
                            action='store', type=float, required=False,
-                           help="A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10% of uncertainty",
+                           help="A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10 percent of uncertainty",
                            )
     parser.add_argument('-a',  '--region_of_interest_volume',
                            action='store', type=str, required=False,
