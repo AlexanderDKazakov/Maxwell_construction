@@ -13,8 +13,8 @@ Created for internal needs. Feel free to use it and contribute (see [contributio
 ## 1.1. Usage
 
 ```
-usage: maxwell.py [-h] -i INPUT [-e ERROR_PRESSURE] [-a REGION_OF_INTEREST_VOLUME] [-o REGION_OF_INTEREST_PRESSURE] [-n NUMBER_OF_POINTS] [-g GROWTH_LIMIT] [-s SMOOTHNESS_LEVEL] [-t TOLERANCE]
-                  [-l ITERATION_LIMIT] [-x X_COLUMN] [-y Y_COLUMN] [--verbose] [--plot] [--return_best] [--interpolate] [--number_inter_points NUMBER_INTER_POINTS]
+usage: maxwell [-h] -i INPUT [-e ERROR_PRESSURE] [-a REGION_OF_INTEREST_VOLUME] [-o REGION_OF_INTEREST_PRESSURE] [-n NUMBER_OF_POINTS] [-g GROWTH_LIMIT] [-s SMOOTHNESS_LEVEL] [-t TOLERANCE]
+               [-l ITERATION_LIMIT] [-x X_COLUMN] [-y Y_COLUMN] [--verbose] [--plot] [--return_best] [--interpolate] [--number_inter_points NUMBER_INTER_POINTS]
 
 Maxwell Construction
 
@@ -23,21 +23,21 @@ optional arguments:
   -i INPUT, --input INPUT
                         Input file path
   -e ERROR_PRESSURE, --error_pressure ERROR_PRESSURE
-                        A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10 percent of uncertainty
+                        Experimental. A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10 percent of uncertainty
   -a REGION_OF_INTEREST_VOLUME, --region_of_interest_volume REGION_OF_INTEREST_VOLUME
                         Region of interest in terms of volume. Ex. 0.2:10. Default: 'all'
   -o REGION_OF_INTEREST_PRESSURE, --region_of_interest_pressure REGION_OF_INTEREST_PRESSURE
                         Region of interest in terms of pressure. Ex. 20:-5. Default: 'all'
   -n NUMBER_OF_POINTS, --number_of_points NUMBER_OF_POINTS
-                        Number of point to use when fit you data with spline. Default: '-1'. All positive values refer to brute search, whereas '-1' refers to smart search.
+                        Number of steps (points) to divide your data. Default: '-1'. All positive values refer to brute search, whereas '-1' refers to smart search.
   -g GROWTH_LIMIT, --growth_limit GROWTH_LIMIT
                         Growth delta area limit. Default: '100'
   -s SMOOTHNESS_LEVEL, --smoothness_level SMOOTHNESS_LEVEL
-                        Smoothness level. Default: '0' An increase led to making the data smoother
+                        Experimental. Smoothness level. Default: '0' An increase led to making the data smoother
   -t TOLERANCE, --tolerance TOLERANCE
                         Area tolerance difference. Default: '0.5'
   -l ITERATION_LIMIT, --iteration_limit ITERATION_LIMIT
-                        Iteration limit. Default: '100'
+                        Iteration limit. Smart search. Default: '100'
   -x X_COLUMN, --x_column X_COLUMN
                         Volume column in the file. Default: '0'
   -y Y_COLUMN, --y_column Y_COLUMN
@@ -47,7 +47,7 @@ optional arguments:
   --return_best         return the best pressure if not reached required tolerance
   --interpolate         interpolate the input data
   --number_inter_points NUMBER_INTER_POINTS
-                        Number of point to use when interpolation happens with spline. Default: '1000'.
+                        Number of points to use when interpolation happens with spline. Default: '1000'.
 
 ```
 

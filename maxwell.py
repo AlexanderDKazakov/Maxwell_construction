@@ -729,7 +729,7 @@ if __name__=="__main__":
                            )
     parser.add_argument('-e',  '--error_pressure',
                            action='store', type=float, required=False,
-                           help="A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10 percent of uncertainty",
+                           help="Experimental. A certain value of percent uncertainty of finding pressure. Default: 0. Ex. 10. Means 10 percent of uncertainty",
                            )
     parser.add_argument('-a',  '--region_of_interest_volume',
                            action='store', type=str, required=False,
@@ -741,7 +741,7 @@ if __name__=="__main__":
                            )
     parser.add_argument('-n',  '--number_of_points',
                            action='store', type=int, required=False,
-                           help="Number of point to use when fit you data with spline. Default: '-1'.\n"
+                           help="Number of steps (points) to divide your data. Default: '-1'.\n"
                            "All positive values refer to brute search, whereas '-1' refers to smart search.",
                            )
     parser.add_argument('-g',  '--growth_limit',
@@ -750,7 +750,7 @@ if __name__=="__main__":
                            )
     parser.add_argument('-s',  '--smoothness_level',
                            action='store', type=int, required=False,
-                           help="Smoothness level. Default: '0'\n" "An increase led to making the data smoother",
+                           help="Experimental. Smoothness level. Default: '0'\n" "An increase led to making the data smoother",
                            )
     parser.add_argument('-t',  '--tolerance',
                            action='store', type=float, required=False,
@@ -758,7 +758,7 @@ if __name__=="__main__":
                            )
     parser.add_argument('-l',  '--iteration_limit',
                            action='store', type=int, required=False,
-                           help="Iteration limit. Default: '100'",
+                           help="Iteration limit. Smart search. Default: '100'",
                            )
     parser.add_argument('-x',  '--x_column',
                            action='store', type=int, required=False,
@@ -774,7 +774,7 @@ if __name__=="__main__":
     parser.add_argument('--interpolate', dest='interpolate', action='store_true',  help="interpolate the input data")
     parser.add_argument('--number_inter_points',
                            action='store', type=int, required=False,
-                           help="Number of point to use when interpolation happens with spline. Default: '1000'."
+                           help="Number of points to use when interpolation happens with spline. Default: '1000'."
                            )
     parser.set_defaults(region_of_interest_volume="all")
     parser.set_defaults(region_of_interest_pressure="all")
@@ -811,7 +811,6 @@ if __name__=="__main__":
     else:
         region_of_interest_pressure = args.region_of_interest_pressure
 
-    #print(args)
     m = Maxwell(
         debug                       = DEBUG,
         filename                    = args.input,
